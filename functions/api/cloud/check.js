@@ -1,14 +1,11 @@
+import { authenticated } from '../../../server/cloud.js';
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
 });
 
 export async function onRequestPost({ request, env }) {
   if (request.headers.get('Origin') !== new URL(request.url).origin) return json({ error: '같은 홈페이지에서 실행해 주세요.' }, 403);
-  if (!env.CLOUD_ADMIN_KEY || env.CLOUD_ADMIN_KEY.length < 24) return json({ error: 'Cloudflare에 CLOUD_ADMIN_KEY Secret을 24자 이상으로 설정해 주세요.' }, 503);
-  const supplied = request.headers.get('Authorization') || '';
-  const digest = async value => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)));
-  const a = await digest(supplied), b = await digest('Bearer ' + env.CLOUD_ADMIN_KEY);
-  if (a.reduce((n, v, i) => n | (v ^ b[i]), 0)) return json({ error: '관리자 연결 키를 확인해 주세요.' }, 401);
+  if (!await authenticated(request,env)) return json({ error: '운영자 로그인이 필요합니다.' },401);
   const result = [];
   const id = crypto.randomUUID();
   if (!env.DB) result.push({ name: 'D1 데이터베이스', ok: false, message: 'DB 바인딩이 없습니다.' });
