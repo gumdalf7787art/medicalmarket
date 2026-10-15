@@ -1,4 +1,4 @@
-import {json,failure,requireAdmin,sameOrigin} from './cloud.js';
+import {json,failure,requireAdmin,sameOrigin,limitedBody} from './cloud.js';
 import {authSchema,putToken,takeToken,random,digest,cookie,readCookie,siteOrigin,limit} from './auth.js';
 
 const scopes=['https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.send'];
@@ -20,13 +20,21 @@ export async function gmailAccess(env){const row=await env.DB.prepare('SELECT * 
 const sessionBinding=request=>digest(readCookie(request,'mm_session')||readCookie(request,'mm_admin'));
 export async function gmailAction({request,env}){
  const path=new URL(request.url).pathname.replace('/api/mail/','');
+ // Strict administrator cookies are withheld on Google's cross-site redirect.
+ // Finish through a same-origin POST, where the original cookie is available.
+ if(request.method==='GET'&&path==='oauth/callback'){
+  const query=new URL(request.url).searchParams,nonce=random();
+  const escape=value=>String(value||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const fields=['state','code','error'].map(name=>`<input type="hidden" name="${name}" value="${escape(query.get(name))}">`).join('');
+  return new Response(`<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gmail 연결 확인</title><body><p>Gmail 연결을 확인하고 있습니다.</p><form method="post" action="${callbackPath}">${fields}<button>연결 확인 계속하기</button></form><script nonce="${nonce}">history.replaceState(null,'','${callbackPath}');document.forms[0].submit();</script></body></html>`,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':`default-src 'none'; script-src 'nonce-${nonce}'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`}});
+ }
+ if(request.method==='POST')sameOrigin(request);
  await requireAdmin(request,env);await schema(env);
  if(request.method==='GET'&&path==='status'){
   let connected=false,email='',error='';
   if(configured(env)&&await env.DB.prepare('SELECT id FROM mm_gmail_connection WHERE id=1').first())try{const access=await gmailAccess(env);const profile=await google('https://gmail.googleapis.com/gmail/v1/users/me/profile',{headers:{Authorization:'Bearer '+access.access_token}});email=profile.emailAddress;connected=email===access.email;}catch(e){error=e.status?e.message:'Gmail 연결을 확인하지 못했습니다. 다시 연결해 주세요.';}
   return json({provider:'gmail-api',configured:configured(env),connected,email,error,attachment:null,workflowReady:false,redirectUri:gmailOrigin(request,env)+callbackPath});
  }
- if(request.method==='POST')sameOrigin(request);
  if(request.method==='POST'&&path==='oauth/start'){
   if(!configured(env))throw failure('Cloudflare에 GMAIL_CLIENT_ID와 GMAIL_CLIENT_SECRET을 등록해 주세요.',503);
   if(new URL(request.url).origin!==gmailOrigin(request,env))throw failure('정식 홈페이지 주소에서 연결해 주세요.',400);
@@ -36,9 +44,9 @@ export async function gmailAction({request,env}){
   const url=new URL('https://accounts.google.com/o/oauth2/v2/auth');url.search=new URLSearchParams({client_id:env.GMAIL_CLIENT_ID,redirect_uri:gmailOrigin(request,env)+callbackPath,response_type:'code',scope:scopes.join(' '),access_type:'offline',prompt:'consent select_account',state,code_challenge:challenge,code_challenge_method:'S256'}).toString();
   return json({url:url.href},200,{'Set-Cookie':cookie('mm_gmail_oauth',state,600)});
  }
- if(request.method==='GET'&&path==='oauth/callback'){
+ if(request.method==='POST'&&path==='oauth/callback'){
   let result='failed';try{
-   if(!configured(env))throw Error();const query=new URL(request.url).searchParams,state=query.get('state');
+   if(!configured(env))throw Error();const query=new URLSearchParams(new TextDecoder().decode(await limitedBody(request,16384))),state=query.get('state');
    if(!state||state!==readCookie(request,'mm_gmail_oauth'))throw Error();
    const pending=await takeToken(env,state,'gmail-oauth');if(pending.binding!==await sessionBinding(request))throw Error();
    if(query.get('error'))result='cancelled';else{
