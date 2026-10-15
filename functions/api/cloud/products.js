@@ -22,10 +22,11 @@ export const onRequestGet=safeHandler(async({request,env})=>{
   if(!env.DB)throw failure('DB 바인딩을 확인해 주세요.',503);
   const admin=new URL(request.url).searchParams.get('admin')==='1';if(admin)await requireAdmin(request,env);
   const after=new URL(request.url).searchParams.get('after')||'';
+  const limit=new URL(request.url).searchParams.get('bulk')==='1'?1000:50;
   let rows;
-  try{rows=await env.DB.prepare('SELECT id,payload,revision FROM mm_products WHERE id > ? '+(admin?'':'AND published=1 AND deleted=0 ')+'ORDER BY id LIMIT 50').bind(after).all();}
+  try{rows=await env.DB.prepare('SELECT id,payload,revision FROM mm_products WHERE id > ? '+(admin?'':'AND published=1 AND deleted=0 ')+'ORDER BY id LIMIT ?').bind(after,limit).all();}
   catch(e){if(String(e).includes('no such table'))return json({products:[],next:null,initialized:false});throw e;}
-  return json({products:rows.results.map(r=>({...JSON.parse(r.payload),revision:r.revision})),next:rows.results.length===50?rows.results.at(-1).id:null,initialized:true});
+  return json({products:rows.results.map(r=>({...JSON.parse(r.payload),revision:r.revision})),next:rows.results.length===limit?rows.results.at(-1).id:null,initialized:true});
 });
 export const onRequestPost=safeHandler(async({request,env})=>{
   sameOrigin(request);await requireAdmin(request,env);await schema(env);
