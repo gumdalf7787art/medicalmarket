@@ -1,0 +1,4 @@
+/* Preserve the original body-level layout after introducing the React root. */
+#medicalmarket-root { display: contents; }
+body.is-admin #medicalmarket-root > header,
+body.is-admin #medicalmarket-root > footer { display: none; }

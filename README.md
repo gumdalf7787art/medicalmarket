@@ -1,6 +1,32 @@
 # Medical Market Season 2
 
-의료기기 견적 요청 플랫폼의 화면 및 로컬 기능 개발용 코드입니다.
+의료기기 견적 요청 플랫폼의 React 19 + Vite 화면 및 로컬 기능 개발용 코드입니다.
+
+## React 실행·빌드
+Node.js 22.12 이상을 사용합니다.
+
+```sh
+npm ci
+npm run dev
+npm run build
+```
+
+`npm run dev`는 화면 개발용입니다. `npm run build`의 공개 결과물은 `dist/`에 생성됩니다.
+Cloudflare Pages 설정: Framework preset `React (Vite)`, Build command `npm run build`, Build output directory `dist`, Production branch `main`.
+환경변수에 Gmail 앱 비밀번호를 프런트엔드 변수로 넣지 않습니다.
+
+React가 공통 헤더, 운영 레이아웃과 고객·운영 페이지 렌더링을 담당합니다.
+기존 업무 모듈은 `scripts/domain-files.json` 순서로 하나의 ES 모듈로 빌드되며, 저장 키·업무 규칙·API 요청을 유지합니다.
+기존 문자열 템플릿은 React 요소로 변환합니다. 제품 설명 편집기와 부분 갱신 영역은 커서·실행 취소를 보존하기 위해 DOM 호환 영역으로 관리합니다. 모든 내부 로직을 JSX/Hooks로 재작성한 상태는 아닙니다.
+
+## 검증
+```sh
+npx playwright install chromium
+npm run build
+npm test
+```
+제품 편집·관심제품·단일 견적 요청·공급업체 수정·메일함·첨부 다운로드·고객 견적 계산·모바일 운영 메뉴를 Chromium에서 확인합니다.
+테스트는 격리된 브라우저와 가상 API만 사용하며 실제 이메일을 보내지 않습니다.
 
 ## 공개본 범위
 - 홈페이지·제품 탐색·제품 에디터·운영자 화면·공급사 의뢰·메일함·고객 견적 PDF 코드.
@@ -9,7 +35,7 @@
 - 원본 개발 폴더와 독립된 신규 공개 저장소입니다.
 
 ## 로컬 실행
-Python 3.10 이상에서 `python -m pip install -r requirements.txt` 후 `python serve_local.py`를 실행하고 http://127.0.0.1:8767 을 엽니다. 정적 화면은 일반 웹 서버에서도 볼 수 있으나 메일·업로드·PDF 기능은 Python 서버가 필요합니다.
+화면은 `npm run dev` 또는 빌드한 `dist/`를 정적 서버로 제공해 확인합니다. 메일·업로드·PDF 기능은 별도의 Python API 서버 연결이 필요합니다. 기존 `serve_local.py`는 로컬 개발용 API 구현이며 Cloudflare Pages에서 자동 실행되지 않습니다.
 
 ## 개발 상태 및 배포
 실제 회원 인증·운영자 권한·공통 운영 DB는 아직 연결되지 않았습니다. 브라우저에 입력한 데모 정보는 해당 브라우저에만 저장됩니다. 현재 서버는 로컬 전용입니다. 인증 없이 운영 서버로 공개하지 마세요. GitHub 공개는 Cloudflare 배포를 의미하지 않습니다.

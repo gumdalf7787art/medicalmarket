@@ -1,0 +1,18 @@
+[
+  "collection-data.js",
+  "category-data.js",
+  "management-data.js",
+  "management.js",
+  "category-nav.js",
+  "home.js",
+  "detail-data.js",
+  "attachment-data.js",
+  "region-data.js",
+  "admin.js",
+  "suppliers.js",
+  "supplier-mail.js",
+  "product-editor.js",
+  "reply-ui.js",
+  "gmail-ui.js",
+  "app.js"
+]
