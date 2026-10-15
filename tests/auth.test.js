@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {onRequest} from '../functions/api/auth/[[path]].js';
 import {authenticated,mac} from '../server/cloud.js';
-import {authSchema} from '../server/auth.js';
+import {authSchema,putToken} from '../server/auth.js';
 
 const db=new DatabaseSync(':memory:');
 const DB={prepare(sql){let args=[];return {bind(...values){args=values;return this;},async first(){return db.prepare(sql).get(...args)||null;},async run(){return db.prepare(sql).run(...args);},async all(){return {results:db.prepare(sql).all(...args)};}};},async batch(statements){db.exec('BEGIN');try{const result=[];for(const statement of statements)result.push(await statement.run());db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}}};
@@ -86,6 +86,15 @@ test('email ownership, authorization, reset and OAuth identity isolation',async(
  assert.match((await naverLogin()).headers.get('location'),/error=/);
  providerId='missing-nickname';naverNickname='';const noNickname=await naverLogin();
  assert.equal((await (await call('session',null,sessionCookie(noNickname))).json()).user.name,'네이버 회원');
+ const pendingTicket=await putToken(env,'social',{provider:'naver',subject:'old-pending-login',name:'이전 별명'},10);
+ const pending=await call('social',{name:'Ignore input',role:'admin'},'mm_social='+pendingTicket);
+ assert.equal(pending.status,200);const pendingUser=(await pending.json()).user;
+ assert.equal(pendingUser.name,'이전 별명');assert.equal(pendingUser.role,'user');
+ assert.equal((await call('social',{},'mm_social='+pendingTicket)).status,400);
+ assert.equal((await call('social',{name:'No identity',consent:true})).status,400);
+ const disabledTicket=await putToken(env,'social',{provider:'naver',subject:'old-pending-login',name:'이전 별명'},10);
+ db.prepare('UPDATE mm_users SET disabled=1 WHERE id=?').run(pendingUser.id);
+ assert.equal((await call('social',{},'mm_social='+disabledTicket)).status,403);
  const ownerId=env.OWNER_USER_ID;delete env.OWNER_USER_ID;
  assert.equal((await call('legacy-import',{members:[{email:'legacy@example.test',name:'이전 회원'}]},legacyCookie)).status,200);
  const previous=await call('members?legacy=1',null,legacyCookie);assert.equal(previous.status,200);assert.equal((await previous.json()).total,2);

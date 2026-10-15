@@ -53,5 +53,11 @@ assert.equal(await page.locator('input[name="token"]').inputValue(),'a'.repeat(6
 assert.equal(await page.locator('input[name="consent"]').count(),1);
 assert.equal(await page.locator('input[name="passwordConfirm"]').count(),1);
 console.log('PASS legacy member request and activation screens');
+await page.route('**/api/auth/session',route=>route.fulfill({json:{user:null,providers:{kakao:true,naver:true}}}));
+await page.route('**/api/auth/social',route=>route.fulfill({json:{user:{id:'qa-social',name:'네이버 별명',role:'user'}}}));
+await page.goto(url+'/#auth/social');await page.waitForURL('**/#home');
+assert.equal(await page.locator('form[data-action="social"]').count(),0);
+assert.equal(await page.locator('input[name="consent"]').count(),0);
+console.log('PASS pending social signup completes directly at home without fields');
 assert.deepEqual(errors,[],'Browser runtime errors');console.log('PASS all React interaction checks; no actual messages sent');
 } )().catch(e=>{console.error(e);process.exitCode=1;}).finally(async()=>{await browser?.close();server.close();});
