@@ -8,11 +8,12 @@ import {authSchema} from '../server/auth.js';
 const db=new DatabaseSync(':memory:');
 const DB={prepare(sql){let args=[];return {bind(...values){args=values;return this;},async first(){return db.prepare(sql).get(...args)||null;},async run(){return db.prepare(sql).run(...args);},async all(){return {results:db.prepare(sql).all(...args)};}};},async batch(statements){db.exec('BEGIN');try{const result=[];for(const statement of statements)result.push(await statement.run());db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}}};
 const env={DB,OWNER_EMAIL:'owner@example.test',AUTH_MAIL_API_KEY:'test-only',AUTH_MAIL_FROM:'test@example.test',KAKAO_CLIENT_ID:'test-id',KAKAO_CLIENT_SECRET:'test-secret',NAVER_CLIENT_ID:'naver-id',NAVER_CLIENT_SECRET:'naver-secret',ADMIN_PASSWORD:'test-only-bootstrap-password'};
-const mails=[];let providerId='12345';
+const mails=[];let providerId='12345',naverNickname='네이버 별명';
 const originalFetch=globalThis.fetch;
 globalThis.fetch=async(url,options)=>{
  if(url==='https://api.resend.com/emails'){mails.push(JSON.parse(options.body));return Response.json({id:'mock'});}
  if(String(url).includes('/token'))return Response.json({access_token:'mock-provider-token'});
+ if(String(url).includes('openapi.naver.com'))return Response.json({resultcode:'00',response:{id:providerId,nickname:naverNickname,email:'owner@example.test',name:'Not the nickname'}});
  if(String(url).includes('kapi.kakao'))return Response.json({id:providerId,properties:{nickname:'SNS tester'},kakao_account:{email:'owner@example.test'}});
  throw Error('Unexpected external request '+url);
 };
@@ -74,6 +75,17 @@ test('email ownership, authorization, reset and OAuth identity isolation',async(
  db.prepare('UPDATE mm_users SET disabled=1 WHERE id=?').run(social.id);
  const blocked=await kakaoLogin();assert.match(blocked.headers.get('location'),/error=/);assert(!blocked.headers.get('set-cookie').startsWith('mm_session='));
  db.prepare('UPDATE mm_users SET disabled=0 WHERE id=?').run(social.id);
+ const naverLogin=async()=>{const start=await call('oauth/naver/start'),state=new URL(start.headers.get('location')).searchParams.get('state');return onRequest({env,params:{path:['oauth','naver','callback']},request:new Request('https://example.test/api/auth/oauth/naver/callback?state='+state+'&code=mock',{headers:{Cookie:sessionCookie(start)}})});};
+ const naverResponse=await naverLogin();assert.equal(naverResponse.headers.get('location'),'/#home');
+ const naverUser=(await (await call('session',null,sessionCookie(naverResponse))).json()).user;
+ assert.equal(naverUser.name,'네이버 별명');assert.equal(naverUser.role,'user');assert.equal(naverUser.email,'');assert.notEqual(naverUser.id,social.id);assert.notEqual(naverUser.id,owner.id);
+ naverNickname='바뀐 별명';const naverAgain=await naverLogin();
+ const naverUpdated=(await (await call('session',null,sessionCookie(naverAgain))).json()).user;
+ assert.equal(naverUpdated.id,naverUser.id);assert.equal(naverUpdated.name,naverNickname);
+ db.prepare('UPDATE mm_users SET disabled=1 WHERE id=?').run(naverUser.id);
+ assert.match((await naverLogin()).headers.get('location'),/error=/);
+ providerId='missing-nickname';naverNickname='';const noNickname=await naverLogin();
+ assert.equal((await (await call('session',null,sessionCookie(noNickname))).json()).user.name,'네이버 회원');
  const ownerId=env.OWNER_USER_ID;delete env.OWNER_USER_ID;
  assert.equal((await call('legacy-import',{members:[{email:'legacy@example.test',name:'이전 회원'}]},legacyCookie)).status,200);
  const previous=await call('members?legacy=1',null,legacyCookie);assert.equal(previous.status,200);assert.equal((await previous.json()).total,2);

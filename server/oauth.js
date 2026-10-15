@@ -28,15 +28,15 @@ export async function oauthAction({request,env,params}){
    const profile=provider==='naver'?raw.response:raw;if(!profileResponse.ok||!profile?.id)throw failure('회원 정보를 확인하지 못했습니다.');
    const subject=String(profile.id);let identity=await env.DB.prepare('SELECT u.* FROM mm_identities i JOIN mm_users u ON u.id=i.user_id WHERE i.provider=? AND i.subject=?').bind(provider,subject).first();
    if(identity?.disabled)throw failure('이용이 제한된 계정입니다. 운영자에게 문의해 주세요.',403);
-   if(provider==='kakao'){
-    const nickname=String(profile.kakao_account?.profile?.nickname||profile.properties?.nickname||'').trim().slice(0,80);
+   if(provider==='kakao'||provider==='naver'){
+    const nickname=String(provider==='naver'?(profile.nickname||''):(profile.kakao_account?.profile?.nickname||profile.properties?.nickname||'')).trim().slice(0,80);
     if(!identity){
      const id=crypto.randomUUID(),at=new Date().toISOString();
-     // Provider approval completes Kakao signup. Never match an account by its email.
+     // Provider approval completes social signup. Never match an account by its email.
      try{await env.DB.batch([
-      env.DB.prepare("INSERT INTO mm_users(id,email,name,role,verified,created_at,consent_at) VALUES (?,NULL,?,'user',1,?,?)").bind(id,nickname||'카카오 회원',at,at),
+      env.DB.prepare("INSERT INTO mm_users(id,email,name,role,verified,created_at,consent_at) VALUES (?,NULL,?,'user',1,?,?)").bind(id,nickname||(provider==='kakao'?'카카오 회원':'네이버 회원'),at,at),
       env.DB.prepare('INSERT INTO mm_identities(provider,subject,user_id) VALUES (?,?,?)').bind(provider,subject,id),
-      env.DB.prepare('INSERT INTO mm_auth_audit VALUES (?,?,?,?,?)').bind(crypto.randomUUID(),id,id,'signup:kakao-oauth',at)
+      env.DB.prepare('INSERT INTO mm_auth_audit VALUES (?,?,?,?,?)').bind(crypto.randomUUID(),id,id,'signup:'+provider+'-oauth',at)
      ]);}catch(error){
       // A concurrent callback may already have created this identity; the batch rolls back its unused user.
       const existing=await env.DB.prepare('SELECT user_id FROM mm_identities WHERE provider=? AND subject=?').bind(provider,subject).first();if(!existing)throw error;
