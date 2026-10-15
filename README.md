@@ -4,6 +4,7 @@
 
 ## React 실행·빌드
 Node.js 22.12 이상을 사용합니다.
+Cloudflare 빌드는 `.node-version`에 지정한 Node.js 24.12.0을 사용합니다. 기존 `NODE_VERSION` 환경변수가 있다면 같은 버전으로 맞추거나 삭제하세요.
 
 ```sh
 npm ci
