@@ -14,5 +14,6 @@
   "product-editor.js",
   "reply-ui.js",
   "gmail-ui.js",
+  "cloud-ui.js",
   "app.js"
 ]
