@@ -1,31 +1,36 @@
 메디컬마켓 회원 로그인 연결 안내
 
 현재 구현
-- 이메일 가입 / 이메일 확인 / 로그인 / 비밀번호 재설정 / 로그아웃
+- 이메일 인증 없는 즉시 가입·로그인 / 비밀번호 재설정 / 로그아웃
 - 카카오·네이버 OAuth 로그인 및 최초 가입 동의
 - 일반 사용자(user) / 지정 운영자(admin), 최초 운영자만 권한 지정·해제
 - D1에 회원·세션·SNS 식별자·권한 변경 기록 저장
-- 기존 회원은 검증된 이메일로만 이전 프로필 연결. 비밀번호·기존 등급은 이전하지 않음
+- 기존 회원 프로필은 이메일 일치만으로 연결하지 않음. 비밀번호·기존 등급은 이전하지 않음
 
-1. 인증메일 발신 준비
-https://resend.com 에서 계정 생성 → Domains → 소유한 도메인 추가.
-안내되는 DNS 레코드를 Cloudflare DNS에 등록하고 Verify 완료.
-API Keys에서 발신용 API 키 생성. 발신 주소는 인증한 도메인의 주소 사용.
-Gmail 앱 비밀번호를 여기에 사용하지 않습니다. naver.com/gmail.com/pages.dev는 본인 소유 발신 도메인이 아닙니다.
+1. 이메일 가입
+이메일·이름·비밀번호·수집 이용 동의로 가입 즉시 로그인합니다.
+AUTH_MAIL_API_KEY 또는 AUTH_MAIL_FROM 설정 없이도 가입과 로그인이 됩니다.
+새 계정은 항상 user입니다. verified=0은 이메일 미확인이라는 뜻이며 로그인 제한이 아닙니다.
+이미 가입된 이메일은 가입으로 비밀번호를 덮어쓰거나 로그인할 수 없습니다.
+
+2. 운영자 별도 지정
+OWNER_EMAIL에 의한 운영자 자동 지정은 폐지했습니다. 해당 값은 더 이상 사용하지 않습니다.
+운영자가 될 사람이 가입한 뒤 실제 회원 ID를 확인하여 별도로 지정합니다.
+최초 운영자 지정 시 Cloudflare D1의 mm_users에서 해당 회원 ID의 role을 admin으로 변경하고,
+Cloudflare Pages Secret OWNER_USER_ID에 같은 회원 ID를 설정한 후 재배포합니다.
+이메일만 일치하는 다른 계정에는 권한을 주지 않습니다.
+최초 운영자는 회원 관리에서 다른 회원을 운영자로 지정·해제할 수 있습니다.
+OWNER_USER_ID를 설정하면 기존 공용 ADMIN_PASSWORD 접속도 종료됩니다.
+그 전까지는 기존 운영자 비밀번호로 접속하는 경로를 유지합니다.
+
+3. 비밀번호 찾기 (선택 설정)
+비밀번호 재설정 링크 발신에는 여전히 메일 서비스 설정이 필요합니다.
+https://resend.com 에서 소유 도메인 인증 후 Cloudflare Pages에 다음 설정을 등록합니다.
+SITE_URL: https://medicalmarket.pages.dev
+AUTH_MAIL_API_KEY (Secret): 발신 API 키
+AUTH_MAIL_FROM: 인증한 도메인의 발신 주소
+설정 전에는 비밀번호 찾기 화면에서 운영자 문의 안내를 표시합니다.
 공식 안내: https://resend.com/docs/dashboard/domains/introduction
-
-2. Cloudflare Pages → medicalmarket → Settings → Variables and secrets → Production
-SITE_URL (Text): https://medicalmarket.pages.dev
-AUTH_MAIL_API_KEY (Secret): Resend API 키
-AUTH_MAIL_FROM (Text): Medical Market <인증한 도메인의 발신 주소>
-위 설정 저장 후 재배포 → 본인 이메일 회원가입 → 받은 인증메일에서 인증 완료.
-
-3. 최초 운영자 활성화
-이메일 가입·인증이 되는 것을 확인한 뒤 OWNER_EMAIL (Secret)에 지정한 본인 이메일을 입력하고 재배포.
-이메일로 다시 로그인하면 해당 계정만 최초 운영자가 됩니다.
-OWNER_EMAIL 설정 즉시 예전 ADMIN_PASSWORD 로그인과 예전 공용 운영자 쿠키는 무효화됩니다.
-새 운영자 로그인 확인 후 ADMIN_PASSWORD는 삭제할 수 있습니다.
-운영자 이메일/키는 소스코드에 넣지 말고 Cloudflare에 직접 입력하세요.
 
 4. 카카오
 https://developers.kakao.com → 앱 생성 → 카카오 로그인 활성화.
@@ -47,7 +52,7 @@ Cloudflare Secret: NAVER_CLIENT_ID, NAVER_CLIENT_SECRET
 검수: https://developers.naver.com/docs/login/verify/verify.md
 
 6. 재배포 후 실제 확인
-이메일 가입 → 이메일 인증 → 로그인 → 로그아웃 → 비밀번호 재설정.
+이메일 가입 → 즉시 로그인 → 새로고침 → 로그아웃 → 다시 로그인.
 카카오 및 네이버 각각 최초 가입·재로그인·동의 취소 시험.
 일반 회원이 #ops/products와 관리 API에 접근할 수 없는지 확인.
 최초 운영자 계정으로 회원 관리에서 필요한 계정만 운영자 지정.
@@ -57,7 +62,7 @@ SNS 계정과 이메일 계정은 이메일이 같아도 자동 병합하지 않
 최초 운영자 로그인 → 회원 관리 → 기존 회원 정보 가져오기.
 원본에서 탈퇴·중복·잘못된 이메일을 제외한 비공개 JSON 파일만 사용합니다.
 서버는 이름과 이메일만 받습니다. 공개 GitHub 또는 공개 R2에 올리지 않습니다.
-이후 동일 이메일로 가입·인증하면 이전 프로필이 연결됩니다.
+이메일만 입력한 신규 계정에는 이전 프로필을 자동 연결하지 않습니다. 별도의 본인 확인·수동 연결은 추후 진행합니다.
 
 운영 범위 및 검증 한계
 실제 OAuth 앱·메일 발신 서비스 설정 전에는 외부 로그인/실제 인증메일 수신은 검증할 수 없습니다.
@@ -66,4 +71,4 @@ SNS 계정과 이메일 계정은 이메일이 같아도 자동 병합하지 않
 계정별 브라우저 저장공간을 분리합니다. 예전 로컬 내역은 원래 키에 보존되며 새 계정에 자동 귀속되지 않습니다.
 비밀번호는 Workers Web Crypto PBKDF2-SHA256 100,000회 + 개별 무작위 salt로 저장합니다.
 이메일 로그인 연속 시도 제한과 24시간 HttpOnly/Secure 세션을 적용합니다.
-공용 비밀번호 방식은 최초 운영자 설정까지의 연결용이며 운영 전 OWNER_EMAIL을 반드시 설정합니다.
+공용 비밀번호 방식은 최초 운영자 설정까지의 연결용이며 운영자 별도 지정 시 OWNER_USER_ID를 사용합니다.

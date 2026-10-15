@@ -16,8 +16,8 @@ export async function equal(a,b){const hash=async s=>new Uint8Array(await crypto
 export async function authenticated(request,env){
   const member=await currentUser(request,env);
   if(member)return member.role==='admin';
-  // Setting OWNER_EMAIL retires the shared password, including already-issued cookies.
-  if(env.OWNER_EMAIL)return false;
+  // Setting OWNER_USER_ID retires the shared password, including already-issued cookies.
+  if(env.OWNER_USER_ID)return false;
   if(!secret(env)||secret(env).length<12)return false;
   const token=request.headers.get('Cookie')?.match(/(?:^|;\s*)mm_admin=([^;]+)/)?.[1]||'';
   const [expires,nonce,signature]=token.split('.');

@@ -1,8 +1,8 @@
 import {json,bodyJson,sameOrigin,mac,equal,authenticated,schema,safeHandler,failure} from '../../../server/cloud.js';
-export const onRequestGet=safeHandler(async({request,env})=>json({authenticated:await authenticated(request,env),configured:!!env.ADMIN_PASSWORD&&env.ADMIN_PASSWORD.length>=12,bootstrapAllowed:!env.OWNER_EMAIL}));
+export const onRequestGet=safeHandler(async({request,env})=>json({authenticated:await authenticated(request,env),configured:!!env.ADMIN_PASSWORD&&env.ADMIN_PASSWORD.length>=12,bootstrapAllowed:!env.OWNER_USER_ID}));
 export const onRequestPost=safeHandler(async({request,env})=>{
   sameOrigin(request);
-  if(env.OWNER_EMAIL)throw failure('이메일 또는 SNS 계정으로 로그인해 주세요. 공용 운영자 비밀번호는 사용하지 않습니다.',403);
+  if(env.OWNER_USER_ID)throw failure('이메일 또는 SNS 계정으로 로그인해 주세요. 공용 운영자 비밀번호는 사용하지 않습니다.',403);
   if(!env.ADMIN_PASSWORD||env.ADMIN_PASSWORD.length<12)throw failure('Cloudflare Secret에 ADMIN_PASSWORD를 12자 이상으로 설정해 주세요.',503);
   const {password}=await bodyJson(request,4096);await schema(env);
   const now=Date.now(),key=await mac('login:'+ (request.headers.get('CF-Connecting-IP')||'local'),env);
