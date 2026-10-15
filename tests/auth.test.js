@@ -66,5 +66,11 @@ test('email ownership, authorization, reset and OAuth identity isolation',async(
  const finish=await call('social',{name:'SNS tester',consent:true},sessionCookie(callback)),social=(await finish.json()).user;
  assert.equal(social.role,'user');assert.equal(social.email,'');assert.notEqual(social.id,owner.id,'provider email must not take over owner');
  assert.equal((await call('social',{name:'again',consent:true},sessionCookie(callback))).status,400);
+ const ownerId=env.OWNER_USER_ID;delete env.OWNER_USER_ID;
+ assert.equal((await call('legacy-import',{members:[{email:'legacy@example.test',name:'이전 회원'}]},legacyCookie)).status,200);
+ const previous=await call('members?legacy=1',null,legacyCookie);assert.equal(previous.status,200);assert.equal((await previous.json()).total,2);
+ assert.equal((await call('members?legacy=1')).status,403);
+ assert.equal((await call('members?legacy=1',null,userCookie)).status,403);
+ env.OWNER_USER_ID=ownerId;
  globalThis.fetch=originalFetch;
 });

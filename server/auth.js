@@ -1,4 +1,4 @@
-import {json,failure,bodyJson,sameOrigin,equal} from './cloud.js';
+import {json,failure,bodyJson,sameOrigin,equal,authenticated} from './cloud.js';
 
 const enc=new TextEncoder();
 export const digest=async text=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',enc.encode(text))),b=>b.toString(16).padStart(2,'0')).join('');
@@ -52,9 +52,14 @@ export async function authAction({request,env,params}){
  await authSchema(env);const path=(Array.isArray(params.path)?params.path.join('/'):params.path)||'';
  if(request.method==='GET'&&path==='session')return json({user:publicUser(await currentUser(request,env),env),providers:{kakao:!!(env.KAKAO_CLIENT_ID&&env.KAKAO_CLIENT_SECRET),naver:!!(env.NAVER_CLIENT_ID&&env.NAVER_CLIENT_SECRET)},emailReady:!!(env.AUTH_MAIL_API_KEY&&env.AUTH_MAIL_FROM)});
  if(request.method==='GET'&&path==='members'){
-  const user=await userRequired(request,env);if(user.role!=='admin')throw failure('운영자 권한이 필요합니다.',403);
+  const user=await currentUser(request,env);if(!await authenticated(request,env))throw failure('운영자 권한이 필요합니다.',403);
   const url=new URL(request.url),offset=Math.max(0,Math.min(100000,Number(url.searchParams.get('offset'))||0)),q=(url.searchParams.get('q')||'').slice(0,100);
-  const rows=await env.DB.prepare('SELECT id,email,name,role,verified,created_at FROM mm_users WHERE email LIKE ? OR name LIKE ? ORDER BY created_at DESC LIMIT 51 OFFSET ?').bind('%'+q+'%','%'+q+'%',offset).all();return json({members:rows.results.slice(0,50),next:rows.results.length>50?offset+50:null,owner:publicUser(user,env).owner});
+  if(url.searchParams.get('legacy')==='1'){
+   const result=await env.DB.prepare('SELECT email,name,claimed_by,imported_at FROM mm_legacy_members WHERE email LIKE ? OR name LIKE ? ORDER BY email LIMIT 51 OFFSET ?').bind('%'+q+'%','%'+q+'%',offset).all();
+   const total=await env.DB.prepare('SELECT COUNT(*) AS count FROM mm_legacy_members').first();
+   return json({members:result.results.slice(0,50),next:result.results.length>50?offset+50:null,total:total.count,legacy:true});
+  }
+  const rows=await env.DB.prepare('SELECT id,email,name,role,verified,created_at FROM mm_users WHERE email LIKE ? OR name LIKE ? ORDER BY created_at DESC LIMIT 51 OFFSET ?').bind('%'+q+'%','%'+q+'%',offset).all();return json({members:rows.results.slice(0,50),next:rows.results.length>50?offset+50:null,owner:publicUser(user,env)?.owner||false});
  }
  if(request.method!=='POST')throw failure('지원하지 않는 요청입니다.',405);
  sameOrigin(request);const data=await bodyJson(request,8192);
@@ -91,10 +96,10 @@ export async function authAction({request,env,params}){
   await env.DB.batch([env.DB.prepare('UPDATE mm_users SET role=? WHERE id=?').bind(data.role,target.id),env.DB.prepare('DELETE FROM mm_sessions WHERE user_id=?').bind(target.id),env.DB.prepare('INSERT INTO mm_auth_audit VALUES (?,?,?,?,?)').bind(crypto.randomUUID(),actor.id,target.id,'role:'+data.role,new Date().toISOString())]);return json({ok:true});
  }
  if(path==='legacy-import'){
-  const actor=await userRequired(request,env);if(!publicUser(actor,env).owner)throw failure('최초 운영자만 기존 회원을 가져올 수 있습니다.',403);
+  const actor=await currentUser(request,env);if(!(publicUser(actor,env)?.owner||(!env.OWNER_USER_ID&&!actor&&await authenticated(request,env))))throw failure('최초 운영자 또는 기존 운영자 연결이 필요합니다.',403);
   if(!Array.isArray(data.members)||data.members.length>20)throw failure('최대 20명씩 가져올 수 있습니다.');
   const rows=data.members.map(row=>({email:emailValue(row.email),name:String(row.name||'').trim().slice(0,80)}));if(rows.some(row=>!row.name))throw failure('회원 이름을 확인해 주세요.');
-  const at=new Date().toISOString();await env.DB.batch([...rows.map(row=>env.DB.prepare('INSERT INTO mm_legacy_members(email,name,imported_at) VALUES (?,?,?) ON CONFLICT(email) DO NOTHING').bind(row.email,row.name,at)),env.DB.prepare('INSERT INTO mm_auth_audit VALUES (?,?,?,?,?)').bind(crypto.randomUUID(),actor.id,'legacy','import:'+rows.length,at)]);return json({count:rows.length});
+  const at=new Date().toISOString();await env.DB.batch([...rows.map(row=>env.DB.prepare('INSERT INTO mm_legacy_members(email,name,imported_at) VALUES (?,?,?) ON CONFLICT(email) DO NOTHING').bind(row.email,row.name,at)),env.DB.prepare('INSERT INTO mm_auth_audit VALUES (?,?,?,?,?)').bind(crypto.randomUUID(),actor?.id||'bootstrap-admin','legacy','import:'+rows.length,at)]);return json({count:rows.length});
  }
  throw failure('요청 경로를 확인해 주세요.',404);
 }
