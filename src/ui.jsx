@@ -105,7 +105,7 @@ function Application(props) {
       </AdminLayout>:<CustomerPage content={props.content}/>}
     </div></main>
     <div id="toast" role="status" aria-live="polite"/>
-    <footer>MEDICAL MARKET SEASON 2 <span>단계 1 · 고객과 운영자의 업무 흐름 확인</span></footer>
+    <footer>MEDICAL MARKET SEASON 2 <span><a href="/privacy.html">개인정보처리방침</a></span></footer>
   </>;
 }
 

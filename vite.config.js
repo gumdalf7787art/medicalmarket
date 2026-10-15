@@ -53,7 +53,7 @@ export default defineConfig({
     closeBundle() {
       // Allowlisted runtime files only. Never publish Python, SQL, private mail,
       // credentials, tests, or the original business directory in dist.
-      for (const name of localEdition?[]:['assets','supplier-email.html','sample-suppliers.json']) {
+      for (const name of localEdition?[]:['assets','supplier-email.html','sample-suppliers.json','privacy.html']) {
         if(existsSync(name)) cpSync(name,resolve('dist',name),{recursive:true});
       }
     },
