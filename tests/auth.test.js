@@ -62,10 +62,18 @@ test('email ownership, authorization, reset and OAuth identity isolation',async(
  const start2=await call('oauth/kakao/start'),state2=new URL(start2.headers.get('location')).searchParams.get('state');
  // Route params do not contain query parameters in Pages.
  const callback=await onRequest({env,params:{path:['oauth','kakao','callback']},request:new Request('https://example.test/api/auth/oauth/kakao/callback?state='+state2+'&code=mock',{headers:{Cookie:sessionCookie(start2)}})});
- assert.equal(callback.headers.get('location'),'/#auth/social');
- const finish=await call('social',{name:'SNS tester',consent:true},sessionCookie(callback)),social=(await finish.json()).user;
- assert.equal(social.role,'user');assert.equal(social.email,'');assert.notEqual(social.id,owner.id,'provider email must not take over owner');
- assert.equal((await call('social',{name:'again',consent:true},sessionCookie(callback))).status,400);
+ assert.equal(callback.headers.get('location'),'/#home');
+ const social=(await (await call('session',null,sessionCookie(callback))).json()).user;
+ assert.equal(social.name,'SNS tester');assert.equal(social.role,'user');assert.equal(social.email,'');assert.notEqual(social.id,owner.id,'provider email must not take over owner');
+ const kakaoLogin=async()=>{const start=await call('oauth/kakao/start'),state=new URL(start.headers.get('location')).searchParams.get('state');return onRequest({env,params:{path:['oauth','kakao','callback']},request:new Request('https://example.test/api/auth/oauth/kakao/callback?state='+state+'&code=mock',{headers:{Cookie:sessionCookie(start)}})});};
+ db.prepare('UPDATE mm_users SET name=? WHERE id=?').run('Previously entered name',social.id);
+ const repeat=await kakaoLogin();assert.equal(repeat.headers.get('location'),'/#home');
+ const again=(await (await call('session',null,sessionCookie(repeat))).json()).user;
+ assert.equal(again.id,social.id);assert.equal(again.name,'SNS tester');
+ assert.equal(db.prepare("SELECT COUNT(*) AS n FROM mm_identities WHERE provider='kakao' AND subject=?").get(providerId).n,1);
+ db.prepare('UPDATE mm_users SET disabled=1 WHERE id=?').run(social.id);
+ const blocked=await kakaoLogin();assert.match(blocked.headers.get('location'),/error=/);assert(!blocked.headers.get('set-cookie').startsWith('mm_session='));
+ db.prepare('UPDATE mm_users SET disabled=0 WHERE id=?').run(social.id);
  const ownerId=env.OWNER_USER_ID;delete env.OWNER_USER_ID;
  assert.equal((await call('legacy-import',{members:[{email:'legacy@example.test',name:'이전 회원'}]},legacyCookie)).status,200);
  const previous=await call('members?legacy=1',null,legacyCookie);assert.equal(previous.status,200);assert.equal((await previous.json()).total,2);

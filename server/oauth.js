@@ -26,8 +26,27 @@ export async function oauthAction({request,env,params}){
    const tokens=await response.json();if(!response.ok||!tokens.access_token)throw failure('로그인 인증에 실패했습니다.');
    const profileResponse=await fetch(cfg.profile,{headers:{Authorization:'Bearer '+tokens.access_token}}),raw=await profileResponse.json();
    const profile=provider==='naver'?raw.response:raw;if(!profileResponse.ok||!profile?.id)throw failure('회원 정보를 확인하지 못했습니다.');
-   const subject=String(profile.id),identity=await env.DB.prepare('SELECT u.* FROM mm_identities i JOIN mm_users u ON u.id=i.user_id WHERE i.provider=? AND i.subject=? AND u.disabled=0').bind(provider,subject).first();
-   if(identity){const session=await sessionResponse(identity,env);return redirect('/#account',{'Set-Cookie':session.headers.get('Set-Cookie')});}
+   const subject=String(profile.id);let identity=await env.DB.prepare('SELECT u.* FROM mm_identities i JOIN mm_users u ON u.id=i.user_id WHERE i.provider=? AND i.subject=?').bind(provider,subject).first();
+   if(identity?.disabled)throw failure('이용이 제한된 계정입니다. 운영자에게 문의해 주세요.',403);
+   if(provider==='kakao'){
+    const nickname=String(profile.kakao_account?.profile?.nickname||profile.properties?.nickname||'').trim().slice(0,80);
+    if(!identity){
+     const id=crypto.randomUUID(),at=new Date().toISOString();
+     // Provider approval completes Kakao signup. Never match an account by its email.
+     try{await env.DB.batch([
+      env.DB.prepare("INSERT INTO mm_users(id,email,name,role,verified,created_at,consent_at) VALUES (?,NULL,?,'user',1,?,?)").bind(id,nickname||'카카오 회원',at,at),
+      env.DB.prepare('INSERT INTO mm_identities(provider,subject,user_id) VALUES (?,?,?)').bind(provider,subject,id),
+      env.DB.prepare('INSERT INTO mm_auth_audit VALUES (?,?,?,?,?)').bind(crypto.randomUUID(),id,id,'signup:kakao-oauth',at)
+     ]);}catch(error){
+      // A concurrent callback may already have created this identity; the batch rolls back its unused user.
+      const existing=await env.DB.prepare('SELECT user_id FROM mm_identities WHERE provider=? AND subject=?').bind(provider,subject).first();if(!existing)throw error;
+     }
+     identity=await env.DB.prepare('SELECT u.* FROM mm_identities i JOIN mm_users u ON u.id=i.user_id WHERE i.provider=? AND i.subject=?').bind(provider,subject).first();
+    }
+    if(!identity||identity.disabled)throw failure('이용이 제한된 계정입니다. 운영자에게 문의해 주세요.',403);
+    if(nickname&&identity.name!==nickname){await env.DB.prepare('UPDATE mm_users SET name=? WHERE id=? AND disabled=0').bind(nickname,identity.id).run();identity.name=nickname;}
+   }
+   if(identity){const session=await sessionResponse(identity,env);return redirect('/#home',{'Set-Cookie':session.headers.get('Set-Cookie')});}
    const ticket=await putToken(env,'social',{provider,subject,name:String(provider==='naver'?profile.name||profile.nickname||'회원':profile.properties?.nickname||'회원').slice(0,80)},10);
    return redirect('/#auth/social',{'Set-Cookie':cookie('mm_social',ticket,600)});
   }catch(error){return redirect('/#auth/login?error='+encodeURIComponent(error.status?error.message:'SNS 로그인 연결을 확인해 주세요.'),{'Set-Cookie':cookie('mm_oauth','',0)});}

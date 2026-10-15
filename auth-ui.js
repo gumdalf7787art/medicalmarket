@@ -30,7 +30,7 @@ document.addEventListener('submit',async event=>{
  if(event.target.id!=='member-auth')return;event.preventDefault();if(authBusy)return;
  const form=event.target,data=Object.fromEntries(new FormData(form));data.consent=data.consent==='on';if(data.passwordConfirm!==undefined&&data.passwordConfirm!==data.password){authNotice='비밀번호가 일치하지 않습니다.';form.querySelector('[role=status]').textContent=authNotice;return;}
  authBusy=true;form.querySelector('button').disabled=true;authNotice='';
- try{const result=await authFetch(form.dataset.action,data);if(result.user){adoptAuthUser(result.user);await cloudLoadProducts();location.hash='#account';}else{authNotice=result.message||'완료했습니다.';if(form.dataset.action==='reset')location.hash='#auth/login';}}
+ try{const result=await authFetch(form.dataset.action,data);if(result.user){adoptAuthUser(result.user);await cloudLoadProducts();location.hash='#home';}else{authNotice=result.message||'완료했습니다.';if(form.dataset.action==='reset')location.hash='#auth/login';}}
  catch(error){authNotice=error.message;}finally{authBusy=false;render();}
 });
 document.addEventListener('click',async event=>{
