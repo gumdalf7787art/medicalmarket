@@ -32,6 +32,11 @@ test('Gmail OAuth requires admin, binds state to session, encrypts tokens and re
   await assert.rejects(unseal({...env,GMAIL_CLIENT_SECRET:'different'},row.tokens));
   tokens.expires=0;db.prepare('UPDATE mm_gmail_connection SET tokens=?').run(await seal(env,tokens));
   const status=await (await request('status')).text();assert.equal(JSON.parse(status).connected,true);assert.ok(!status.includes('private-'));assert.equal(refreshes,1);
+  globalThis.fetch=async(url)=>{const path=String(url);if(path.includes('/messages?'))return Response.json({messages:[{id:'msg_1234'}]});if(path.includes('/attachments/'))return Response.json({data:'aGVsbG8',size:5});if(path.includes('/messages/msg_1234'))return Response.json({id:'msg_1234',labelIds:['UNREAD'],payload:{headers:[{name:'From',value:'supplier@example.test'},{name:'Subject',value:'견적 회신'}],parts:[{mimeType:'text/plain',body:{data:'7Ji165+ZIOywnOyjvA'}} ,{filename:'quote.txt',body:{attachmentId:'attach_1234',size:5}}]}});throw Error(path);};
+  const list=await (await request('mailbox','POST',admin,'https://example.test',JSON.stringify({action:'list',folder:'inbox'}))).json();assert.equal(list.items[0].subject,'견적 회신');assert.equal(list.items[0].unread,true);
+  const detail=await (await request('mailbox','POST',admin,'https://example.test',JSON.stringify({action:'read',uid:'msg_1234'}))).json();assert.equal(detail.files[0].name,'quote.txt');assert.ok(detail.text);
+  const file=await (await request('mailbox','POST',admin,'https://example.test',JSON.stringify({action:'file',uid:'msg_1234',fileId:'attach_1234'}))).json();assert.equal(atob(file.base64),'hello');
+  assert.equal((await request('mailbox','POST',admin,'https://evil.test','{}')).status,403);
   globalThis.fetch=async()=>new Response('',{status:401});assert.equal((await (await request('status')).json()).connected,false);
   assert.equal((await request('send','POST')).status,501);
  }finally{globalThis.fetch=original;db.close();}
