@@ -21,9 +21,9 @@ test('Gmail OAuth requires admin, binds state to session, encrypts tokens and re
  try{
   const start=await request('oauth/start','POST');const url=new URL((await start.json()).url),state=url.searchParams.get('state'),cookies=admin+'; '+start.headers.get('set-cookie').split(';')[0];
   assert.equal(url.searchParams.get('redirect_uri'),'https://example.test/api/mail/oauth/callback');assert.equal(url.searchParams.get('access_type'),'offline');assert.equal(url.searchParams.get('code_challenge_method'),'S256');
-  const bridge=await request('oauth/callback?state='+state+'&code=test','GET','');assert.equal(bridge.status,200);assert.match(await bridge.text(),/document.forms\[0\].submit/);
+  const bridge=await request('oauth/callback?state='+state+'&code=test','GET','');assert.equal(bridge.status,200);assert.equal(bridge.headers.get('Referrer-Policy'),'same-origin');assert.match(await bridge.text(),/document.forms\[0\].submit/);
   const finish=(cookies,origin='https://example.test')=>request('oauth/callback','POST',cookies,origin,new URLSearchParams({state,code:'test'}).toString());
-  assert.equal((await finish('')).status,401);assert.equal((await finish(cookies,'https://evil.test')).status,403);
+  assert.equal((await finish(cookies,'null')).status,403);assert.equal((await finish('')).status,401);assert.equal((await finish(cookies,'https://evil.test')).status,403);
   assert.match((await finish(admin)).headers.get('location'),/gmail=failed/);
   assert.match((await finish(cookies)).headers.get('location'),/gmail=connected/);
   assert.match((await finish(cookies)).headers.get('location'),/gmail=failed/);

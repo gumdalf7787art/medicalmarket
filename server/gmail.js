@@ -22,11 +22,13 @@ export async function gmailAction({request,env}){
  const path=new URL(request.url).pathname.replace('/api/mail/','');
  // Strict administrator cookies are withheld on Google's cross-site redirect.
  // Finish through a same-origin POST, where the original cookie is available.
+ // Keep same-origin referrers: no-referrer makes form POST Origin null in browsers.
+ // The script removes OAuth parameters before submission; cross-origin referrers stay blocked.
  if(request.method==='GET'&&path==='oauth/callback'){
   const query=new URL(request.url).searchParams,nonce=random();
   const escape=value=>String(value||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const fields=['state','code','error'].map(name=>`<input type="hidden" name="${name}" value="${escape(query.get(name))}">`).join('');
-  return new Response(`<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gmail 연결 확인</title><body><p>Gmail 연결을 확인하고 있습니다.</p><form method="post" action="${callbackPath}">${fields}<button>연결 확인 계속하기</button></form><script nonce="${nonce}">history.replaceState(null,'','${callbackPath}');document.forms[0].submit();</script></body></html>`,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':`default-src 'none'; script-src 'nonce-${nonce}'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`}});
+  return new Response(`<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gmail 연결 확인</title><body><p>Gmail 연결을 확인하고 있습니다.</p><form method="post" action="${callbackPath}">${fields}<button>연결 확인 계속하기</button></form><script nonce="${nonce}">history.replaceState(null,'','${callbackPath}');document.forms[0].submit();</script></body></html>`,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'same-origin','X-Content-Type-Options':'nosniff','Content-Security-Policy':`default-src 'none'; script-src 'nonce-${nonce}'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`}});
  }
  if(request.method==='POST')sameOrigin(request);
  await requireAdmin(request,env);await schema(env);
