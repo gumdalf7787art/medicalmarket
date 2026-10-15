@@ -18,6 +18,7 @@
   "cloud-ui.js",
   "browse-performance.js",
   "auth-ui.js",
+  "member-ui.js",
   "app.js",
   "product-import.js"
 ]

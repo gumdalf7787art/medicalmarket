@@ -23,10 +23,11 @@ function medicalMarketDomain() {
       code = code.slice(0,start) + `
 function render(){
   const [route,id]=(location.hash.slice(1)||(['/product','/product.html'].includes(location.pathname)?'product/'+(new URLSearchParams(location.search).get('id')||''):'home')).split('/');
-  const views={auth:()=>authPage(id),account:accountPage,home,'home-process':home,'home-categories':home,catalog,product:()=>detail(id),request,favorites,mine,ops:()=>adminPage(id),track:()=>track(id),work:()=>work(id),quote:()=>quote(id)};
+  const views={auth:()=>authPage(id),account:()=>memberPage(id||'home'),home,'home-process':home,'home-categories':home,catalog,product:()=>detail(id),request,favorites:()=>cloudMode?memberPage('favorites'):favorites(),mine:()=>cloudMode?memberPage('requests'):mine(),ops:()=>adminPage(id),track:()=>cloudMode?memberPage('detail?id='+id):track(id),work:()=>work(id),quote:()=>quote(id)};
   const isAdmin=['ops','work','quote'].includes(route);
   document.title=route==='product'&&product(id)?product(id).name+' | 메디컬마켓':'메디컬마켓 시즌2';
   document.body.classList.toggle('is-browse',['catalog','favorites','product','request','mine','track'].includes(route));
+  document.body.classList.toggle('is-member',!!authUser&&(['account'].includes(route)||cloudMode&&['favorites','mine','track'].includes(route)));
   document.body.classList.toggle('is-home',route==='home'||route.startsWith('home-'));
   document.body.classList.toggle('is-admin',isAdmin&&(!cloudMode||cloudAuthenticated));
   const homeRoute=route==='home'||route.startsWith('home-');

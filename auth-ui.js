@@ -29,7 +29,9 @@ function adoptAuthUser(user){
  // Preserve older local work, but never silently assign it to a newly logged-in member.
  KEY=!user&&authBootstrap?'medicalmarket-public-demo-v1':'medicalmarket-account-v1:'+ (user?.id||'guest');state=defaultState();
  try{const saved=JSON.parse(localStorage.getItem(KEY)||'null');if(saved&&Array.isArray(saved.requests)&&Array.isArray(saved.cart))state=saved;}catch{}
+ resetMemberData();
 }
+
 document.addEventListener('submit',async event=>{
  if(event.target.id==='member-search'){event.preventDefault();authMemberQuery=String(new FormData(event.target).get('query')||'');authMemberOffset=0;await loadAuthMembers();return;}
  if(event.target.id!=='member-auth')return;event.preventDefault();if(authBusy)return;

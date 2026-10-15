@@ -15,7 +15,7 @@ export function SiteHeader({ route, favorites, authUser }) {
       <a className={route==='favorites'?'active':''} href="#favorites">관심제품 <span id="favorite-count">{favorites}</span></a>
       <a className={route==='mine'?'active':''} href="#mine">요청 목록 보기</a>
     </nav>
-    <div className="member-header">{authUser?.role==='admin'?<a href="#ops" className="ops-link">운영 화면 ↗</a>:null}<a href={authUser?"#account":"#auth/login"}>{authUser?authUser.name+"님":"로그인"}</a>{!authUser?<a href="#auth/signup">회원가입</a>:null}</div>
+    <div className="member-header">{authUser?.role==='admin'?<a href="#ops" className="ops-link">운영 화면 ↗</a>:null}<a href={authUser?"#account":"#auth/login"}>{authUser?"마이페이지":"로그인"}</a>{!authUser?<a href="#auth/signup">회원가입</a>:null}</div>
   </header>;
 }
 
