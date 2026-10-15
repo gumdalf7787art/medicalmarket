@@ -16,8 +16,12 @@ async function cloudRequest(path,options={}){
   const data=await response.json();if(!response.ok){if(response.status===401)cloudAuthenticated=false;throw Error(data.error||'서버 처리에 실패했습니다.');}return data;
 }
 async function cloudLoadProducts(){
+  const filesPromise=cloudRequest('attachments'+(cloudAuthenticated?'?admin=1':''));
   const rows=[];let after='';
   do{const data=await cloudRequest('products?bulk=1&'+(cloudAuthenticated?'admin=1&':'summary=1&')+'after='+encodeURIComponent(after));rows.push(...data.products);after=data.next;}while(after);
+  const files=await filesPromise;
+  for(const key of Object.keys(attachmentData))delete attachmentData[key];
+  Object.assign(attachmentData,files.attachments||{});
   cloudApplyRows(rows);cloudCacheRows(rows);
 }
 function cloudLoginPanel(){return `<section class="admin-panel"><h2>제품 관리 로그인</h2><p>제품 정보와 사진을 저장하려면 운영자 로그인이 필요합니다.</p>${!cloudConfigured?'<p class="notice warn">Cloudflare → Settings → Variables and secrets에 ADMIN_PASSWORD를 Secret으로 추가하고 재배포하세요. 다른 계정과 겹치지 않는 12자 이상의 운영자 비밀번호를 사용하세요.</p>':''}<form id="cloud-login"><label>운영자 비밀번호<input name="password" type="password" autocomplete="current-password" required minlength="12"></label><button class="primary" ${cloudSaving?'disabled':''}>로그인</button></form>${cloudError?`<p role="alert">${e(cloudError)}</p>`:''}</section>`;}

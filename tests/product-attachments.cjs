@@ -1,0 +1,20 @@
+const {request}=require('@playwright/test');const assert=require('node:assert/strict');const {createHash}=require('node:crypto');
+(async()=>{
+ const base='http://127.0.0.1:8799',admin=await request.newContext({baseURL:base,extraHTTPHeaders:{Origin:base}}),anon=await request.newContext({baseURL:base});
+ assert.equal((await admin.post('/api/cloud/session',{data:{password:'local-test-password-only'}})).status(),200);
+ const source={id:'attachment-test-'+Date.now(),name:'Attachment test',model:'TEST',maker:'Test',categoryIds:['10'],gallery:[],image:'',descriptionHtml:'<p>Test</p>',published:true};
+ let row=(await (await admin.post('/api/cloud/products',{data:source})).json()).product;assert(row);
+ const bytes=Buffer.from('%PDF-1.4\n% product document test\n%%EOF'),hash=createHash('sha256').update(bytes).digest('hex');
+ const path='/api/cloud/attachments?'+new URLSearchParams({product:row.id,name:'제품 안내.pdf',extension:'pdf'}),headers={'X-File-SHA256':hash,'Content-Type':'application/octet-stream',Origin:base};
+ assert.equal((await anon.post(path,{headers,data:bytes})).status(),401);
+ assert.equal((await admin.post(path,{headers:{...headers,'X-File-SHA256':'bad'},data:bytes})).status(),400);
+ for(let i=0;i<2;i++)assert.equal((await admin.post(path,{headers,data:bytes})).status(),200);
+ let files=(await (await anon.get('/api/cloud/attachments')).json()).attachments[row.id];assert.equal(files.length,1);
+ let download=await anon.get(files[0].url);assert.equal(download.status(),200);assert.deepEqual(await download.body(),bytes);assert.match(download.headers()['content-disposition'],/attachment;/);
+ row=(await (await admin.post('/api/cloud/products',{data:{...row,descriptionHtml:'<p>Updated</p>'}})).json()).product;
+ assert.equal((await anon.get(files[0].url)).status(),200);
+ await admin.post('/api/cloud/products',{data:{...row,published:false}});
+ assert.equal((await anon.get(files[0].url)).status(),404);
+ assert(!(await (await anon.get('/api/cloud/attachments')).json()).attachments[row.id]);
+ await admin.dispose();await anon.dispose();console.log('PASS attachment upload/auth/hash/idempotence/download/preserve-on-edit/hidden-product');
+})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -1,7 +1,29 @@
 // Only explicitly selected, pre-reviewed product packages are imported. No local DB discovery.
 let productImportRunning=false;
-function productImportPanel(){return cloudMode&&cloudAuthenticated?`<details class="admin-panel"><summary>기존 제품 자료 가져오기</summary><p>개인정보를 제거한 제품 이전 파일만 선택하세요. 기존 제품은 덮어쓰지 않으며, 실패한 파일은 다시 실행할 수 있습니다.</p><label>제품 이전 파일<input id="product-import-files" type="file" accept=".json" multiple ${productImportRunning?'disabled':''}></label><p id="product-import-progress" role="status"></p><button type="button" data-build-thumbnails>목록용 썸네일 만들기</button><p id="thumbnail-progress" role="status"></p></details>`:'';}
+function productImportPanel(){return cloudMode&&cloudAuthenticated?`<details class="admin-panel"><summary>기존 제품 자료 가져오기</summary><p>개인정보를 제거한 제품 이전 파일만 선택하세요. 기존 제품은 덮어쓰지 않으며, 실패한 파일은 다시 실행할 수 있습니다.</p><label>제품 이전 파일<input id="product-import-files" type="file" accept=".json" multiple ${productImportRunning?'disabled':''}></label><p id="product-import-progress" role="status"></p><button type="button" data-build-thumbnails>목록용 썸네일 만들기</button><p id="thumbnail-progress" role="status"></p><label>검토 완료된 제품 첨부 이전 파일<input id="attachment-import-files" type="file" accept=".json" multiple ${productImportRunning?'disabled':''}></label><p id="attachment-progress" role="status"></p></details>`:'';}
 window.addEventListener('beforeunload',event=>{if(productImportRunning){event.preventDefault();event.returnValue='';}});
+document.addEventListener('change',async event=>{
+ if(event.target.id!=='attachment-import-files'||productImportRunning)return;
+ const files=[...event.target.files];if(!files.length)return;
+ productImportRunning=true;cloudSaving=true;event.target.disabled=true;let completed=0;const errors=[];
+ const progress=message=>{const el=document.getElementById('attachment-progress');if(el)el.textContent=message;};
+ try{
+  for(const file of files){
+   try{
+    if(file.size>45*1024*1024)throw Error('이전 파일은 45MB 이하여야 합니다.');
+    const pack=JSON.parse(await file.text());
+    if(pack.format!=='medicalmarket-attachments-v1'||!Array.isArray(pack.products)||pack.products.length>100||typeof pack.base64!=='string'||!/^\w{64}$/.test(pack.hash))throw Error('첨부 이전 파일 형식 오류');
+    const bytes=Uint8Array.from(atob(pack.base64),c=>c.charCodeAt(0));
+    for(const product of pack.products){
+     await cloudRequest('attachments?'+new URLSearchParams({product:product.id,name:product.name,extension:pack.extension}),{method:'POST',headers:{'Content-Type':'application/octet-stream','X-File-SHA256':pack.hash},body:bytes});completed++;
+    }
+   }catch(error){errors.push(file.name+': '+error.message);}
+   progress(`첨부 연결 ${completed}건 · 실패 ${errors.length}건`);
+  }
+  await cloudLoadProducts();manageMessage=`제품 첨부 이전 완료: ${completed}건 · 실패 ${errors.length}건`+(errors.length?' / '+errors.join(' / '):'');
+ }catch(error){manageMessage=`첨부 이전 확인 필요: ${completed}건 저장 · ${error.message}`;}
+ finally{productImportRunning=false;cloudSaving=false;render();}
+});
 document.addEventListener('change',async event=>{
  if(event.target.id!=='product-import-files'||productImportRunning)return;
  const files=[...event.target.files];if(!files.length)return;
