@@ -60,7 +60,7 @@ export async function authAction({request,env,params}){
    const total=await env.DB.prepare('SELECT COUNT(*) AS count FROM mm_legacy_members').first();
    return json({members:result.results.slice(0,50),next:result.results.length>50?offset+50:null,total:total.count,legacy:true});
   }
-  const rows=await env.DB.prepare('SELECT id,email,name,role,verified,created_at FROM mm_users WHERE email LIKE ? OR name LIKE ? ORDER BY created_at DESC LIMIT 51 OFFSET ?').bind('%'+q+'%','%'+q+'%',offset).all();return json({members:rows.results.slice(0,50),next:rows.results.length>50?offset+50:null,owner:publicUser(user,env)?.owner||false});
+  const rows=await env.DB.prepare('SELECT id,email,name,role,verified,created_at FROM mm_users WHERE email LIKE ? OR name LIKE ? ORDER BY created_at DESC LIMIT 51 OFFSET ?').bind('%'+q+'%','%'+q+'%',offset).all();return json({members:rows.results.slice(0,50),next:rows.results.length>50?offset+50:null,owner:publicUser(user,env)?.owner||false,bootstrapAvailable:!env.OWNER_USER_ID&&!user&&!await env.DB.prepare("SELECT id FROM mm_users WHERE role='admin' UNION ALL SELECT id FROM mm_auth_audit WHERE action='bootstrap:admin' LIMIT 1").first()});
  }
  if(request.method!=='POST')throw failure('지원하지 않는 요청입니다.',405);
  sameOrigin(request);const data=await bodyJson(request,8192);
@@ -119,6 +119,17 @@ export async function authAction({request,env,params}){
  if(path==='reset'){
   await limit(request,env,'reset');const password=await hashPassword(data.password),payload=await takeToken(env,data.token,'reset');
   await env.DB.batch([env.DB.prepare('UPDATE mm_users SET password=?,verified=1 WHERE id=? AND disabled=0').bind(password,payload.id),env.DB.prepare('DELETE FROM mm_sessions WHERE user_id=?').bind(payload.id),env.DB.prepare("DELETE FROM mm_auth_tokens WHERE kind IN ('reset','verify') AND json_extract(payload,'$.id')=?").bind(payload.id)]);return json({message:'비밀번호를 변경했습니다. 새 비밀번호로 로그인해 주세요.'});
+ }
+ if(path==='bootstrap-admin'){
+  if(env.OWNER_USER_ID||await currentUser(request,env)||!await authenticated(request,env))throw failure('기존 운영자 연결에서만 최초 지정할 수 있습니다.',403);
+  const id=String(data.id||''),audit=crypto.randomUUID(),at=new Date().toISOString();
+  await env.DB.batch([
+   env.DB.prepare("UPDATE mm_users SET role='admin' WHERE id=? AND disabled=0 AND role='user' AND NOT EXISTS (SELECT 1 FROM mm_users WHERE role='admin') AND NOT EXISTS (SELECT 1 FROM mm_auth_audit WHERE action='bootstrap:admin')").bind(id),
+   env.DB.prepare("INSERT INTO mm_auth_audit(id,actor,target,action,at) SELECT ?,'bootstrap-admin',?,'bootstrap:admin',? WHERE changes()=1").bind(audit,id,at),
+   env.DB.prepare('DELETE FROM mm_sessions WHERE user_id=? AND EXISTS (SELECT 1 FROM mm_auth_audit WHERE id=?)').bind(id,audit)
+  ]);
+  if(!await env.DB.prepare('SELECT id FROM mm_auth_audit WHERE id=?').bind(audit).first())throw failure('최초 지정이 이미 완료됐거나 지정할 수 없는 회원입니다.',409);
+  return json({ok:true});
  }
  if(path==='role'){
   const actor=await userRequired(request,env);if(!publicUser(actor,env).owner)throw failure('최초 운영자 본인만 권한을 변경할 수 있습니다.',403);
