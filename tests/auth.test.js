@@ -72,5 +72,38 @@ test('email ownership, authorization, reset and OAuth identity isolation',async(
  assert.equal((await call('members?legacy=1')).status,403);
  assert.equal((await call('members?legacy=1',null,userCookie)).status,403);
  env.OWNER_USER_ID=ownerId;
+ // Legacy claim requires a mail token, never just an email or a signup.
+ const beforeMail=mails.length;
+ assert.equal((await call('legacy',{email:'legacy@example.test'})).status,200);
+ assert.equal(mails.length,beforeMail+1);const claimToken=token();
+ assert.equal((await call('legacy-activate',{token:'0'.repeat(64),password:'New-legacy-password123!',consent:true})).status,400);
+ const claim=await call('legacy-activate',{token:claimToken,password:'New-legacy-password123!',consent:true});assert.equal(claim.status,200);
+ const claimed=(await claim.clone().json()).user;assert.equal(claimed.role,'user');assert.equal(claimed.legacyName,'이전 회원');
+ assert.equal(db.prepare('SELECT claimed_by FROM mm_legacy_members WHERE email=?').get('legacy@example.test').claimed_by,claimed.id);
+ assert.equal((await call('legacy-activate',{token:claimToken,password:'New-legacy-password123!',consent:true})).status,400);
+ assert.equal((await call('login',{email:'legacy@example.test',password:'New-legacy-password123!'})).status,200);
+ assert.equal((await call('members',null,sessionCookie(claim))).status,403);
+ // Existing ordinary account is reused, old sessions invalidated, no duplicate account.
+ const same=await signup('same@example.test'),sameCookie=sessionCookie(same),sameId=(await same.json()).user.id;
+ await call('legacy-import',{members:[{email:'same@example.test',name:'기존 이름'}]},ownerCookie);
+ await call('legacy',{email:'same@example.test'});const sameToken=token();
+ const linked=await call('legacy-activate',{token:sameToken,password:'Linked-password123!',consent:true});assert.equal(linked.status,200);assert.equal((await linked.json()).user.id,sameId);
+ assert.equal((await (await call('session',null,sameCookie)).json()).user,null);
+ assert.equal(db.prepare('SELECT COUNT(*) AS n FROM mm_users WHERE email=?').get('same@example.test').n,1);
+ assert.equal((await call('login',{email:'same@example.test',password:'Test-only-password123!'})).status,401);
+ // Missing email and privileged accounts reveal no membership; do not send claim links.
+ const noMail=mails.length;
+ assert.equal((await call('legacy',{email:'missing@example.test'})).status,200);
+ assert.equal((await call('legacy',{email:'user@example.test'})).status,200);assert.equal(mails.length,noMail);
+ // A role change after issuing the token must not reset an administrator password.
+ await call('legacy',{email:'same@example.test'});const promotedToken=token();
+ db.prepare("UPDATE mm_users SET role='admin' WHERE id=?").run(sameId);
+ assert.equal((await call('legacy-activate',{token:promotedToken,password:'No-reset-password123!',consent:true})).status,409);
+ // Expired tokens, disabled accounts, and absent mail configuration.
+ await call('legacy',{email:'legacy@example.test'});const expiredToken=token();
+ db.prepare("UPDATE mm_auth_tokens SET expires=0 WHERE kind='legacy-activate'").run();
+ assert.equal((await call('legacy-activate',{token:expiredToken,password:'Expired-password123!',consent:true})).status,400);
+ delete env.AUTH_MAIL_API_KEY;assert.equal((await call('legacy',{email:'legacy@example.test'})).status,503);
+ env.AUTH_MAIL_API_KEY=originalKey;
  globalThis.fetch=originalFetch;
 });

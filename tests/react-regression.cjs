@@ -43,5 +43,15 @@ await page.goto(url+'/#ops/gmail');for(const folder of ['inbox','sent','all']){a
 await page.locator('[data-gmail-read]').click();await page.locator('.gmail-body').waitFor();assert((await page.locator('.gmail-body').textContent()).includes('7000만원'));const download=page.waitForEvent('download');await page.locator('[data-gmail-file]').click();assert.equal((await download).suggestedFilename(),'quote.txt');console.log('PASS inbox/sent/all + body + attachment download (mock API)');
 await page.goto(url+'/#quote/CHECK-2');await page.locator('[name="shipping"]').fill('0');await page.locator('[name="installation"]').fill('0');await page.locator('#auto-quote-review').check();assert((await page.locator('#auto-quote-preview').textContent()).includes('92,400,000'));await page.locator('[data-auto-quote-send]').click();await page.getByRole('button',{name:'고객 발송 완료',exact:true}).waitFor();assert.equal(calls.filter(c=>c.endpoint==='/api/mail/customer-quote').length,1);console.log('PASS customer quote calculation + confirmation + mocked send');
 await page.setViewportSize({width:390,height:844});await page.goto(url+'/#ops');assert.equal(await page.locator('.admin-navigation').getAttribute('open'),null);await page.locator('.admin-navigation summary').click();await page.locator('.admin-navigation a[href="#ops/products"]').click();await page.locator('[data-manage-new]').waitFor();console.log('PASS mobile admin menu');
+await page.setViewportSize({width:1200,height:900});
+await page.goto(url+'/#auth/login');await page.locator('a[href="#auth/legacy"]').click();
+await page.locator('form[data-action="legacy"] input[name="email"]').waitFor();
+assert.equal(await page.locator('form[data-action="legacy"] input[name="password"]').count(),0);
+await page.goto(url+'/#auth/legacy-activate?token='+'a'.repeat(64));
+await page.locator('form[data-action="legacy-activate"] input[name="password"]').waitFor();
+assert.equal(await page.locator('input[name="token"]').inputValue(),'a'.repeat(64));
+assert.equal(await page.locator('input[name="consent"]').count(),1);
+assert.equal(await page.locator('input[name="passwordConfirm"]').count(),1);
+console.log('PASS legacy member request and activation screens');
 assert.deepEqual(errors,[],'Browser runtime errors');console.log('PASS all React interaction checks; no actual messages sent');
 } )().catch(e=>{console.error(e);process.exitCode=1;}).finally(async()=>{await browser?.close();server.close();});

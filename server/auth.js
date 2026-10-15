@@ -45,7 +45,8 @@ export function siteOrigin(request,env){const origin=env.SITE_URL?new URL(env.SI
 export async function mailLink(request,env,email,token,kind){
  if(!env.AUTH_MAIL_API_KEY||!env.AUTH_MAIL_FROM)throw failure('인증메일 발신 설정이 필요합니다. 운영자에게 문의해 주세요.',503);
  const url=siteOrigin(request,env)+'/#auth/'+kind+'?token='+token;
- const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:'Bearer '+env.AUTH_MAIL_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({from:env.AUTH_MAIL_FROM,to:[email],subject:kind==='verify'?'메디컬마켓 이메일 확인':'메디컬마켓 비밀번호 재설정',text:`메디컬마켓 요청을 완료하려면 아래 링크를 열어 주세요. 링크는 30분간 유효합니다.\n${url}\n직접 요청하지 않았다면 무시해 주세요.`,html:`<div style="font-family:sans-serif;line-height:1.8"><h2>메디컬마켓</h2><p>아래 버튼을 눌러 ${kind==='verify'?'이메일 확인':'비밀번호 재설정'}을 진행해 주세요.</p><a href="${url}">인증 진행하기</a><p>30분 이내에 사용해 주세요. 직접 요청하지 않았다면 무시해 주세요.</p></div>`})});
+ const label=kind==='legacy-activate'?'기존 회원 계정 연결':kind==='verify'?'이메일 확인':'비밀번호 재설정';
+ const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:'Bearer '+env.AUTH_MAIL_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({from:env.AUTH_MAIL_FROM,to:[email],subject:'메디컬마켓 '+label,text:`메디컬마켓 요청을 완료하려면 아래 링크를 열어 주세요. 링크는 30분간 유효합니다.\n${url}\n직접 요청하지 않았다면 무시해 주세요.`,html:`<div style="font-family:sans-serif;line-height:1.8"><h2>메디컬마켓</h2><p>아래 버튼을 눌러 ${label}을 진행해 주세요.</p><a href="${url}">인증 진행하기</a><p>30분 이내에 사용해 주세요. 직접 요청하지 않았다면 무시해 주세요.</p></div>`})});
  if(!response.ok)throw failure('인증메일을 보내지 못했습니다. 잠시 후 다시 요청해 주세요.',503);
 }
 export async function authAction({request,env,params}){
@@ -80,6 +81,36 @@ export async function authAction({request,env,params}){
   return sessionResponse(user,env);
  }
  if(path==='verify')throw failure('이메일 인증 없이 로그인할 수 있습니다. 이메일과 비밀번호로 로그인해 주세요.',410);
+ if(path==='legacy'){
+  await limit(request,env,'legacy',5);const email=emailValue(data.email);
+  if(!env.AUTH_MAIL_API_KEY||!env.AUTH_MAIL_FROM)throw failure('기존 회원 연결 메일을 준비 중입니다. 운영자에게 문의해 주세요.',503);
+  const legacy=await env.DB.prepare('SELECT * FROM mm_legacy_members WHERE email=?').bind(email).first();
+  const user=await env.DB.prepare('SELECT id,role,disabled FROM mm_users WHERE email=?').bind(email).first();
+  if(legacy&&(!user||(!user.disabled&&user.role==='user'))&&(!legacy.claimed_by||legacy.claimed_by===user?.id)){
+   const token=await putToken(env,'legacy-activate',{email});await mailLink(request,env,email,token,'legacy-activate');
+  }
+  return json({message:'연결 가능한 기존 회원 정보가 있으면 등록된 이메일로 링크를 보냈습니다. 받은메일함과 스팸함을 확인해 주세요. 운영자 계정은 비밀번호 찾기를 이용해 주세요.'});
+ }
+ if(path==='legacy-activate'){
+  await limit(request,env,'legacy-activate');if(data.consent!==true)throw failure('개인정보 수집·이용 동의가 필요합니다.');
+  const password=await hashPassword(data.password),payload=await takeToken(env,data.token,'legacy-activate');
+  const email=emailValue(payload.email),id=crypto.randomUUID(),at=new Date().toISOString();
+  const legacy=await env.DB.prepare('SELECT * FROM mm_legacy_members WHERE email=?').bind(email).first();
+  const existing=await env.DB.prepare('SELECT * FROM mm_users WHERE email=?').bind(email).first();
+  if(!legacy||existing?.disabled||(existing&&existing.role!=='user')||(legacy.claimed_by&&legacy.claimed_by!==existing?.id))throw failure('이 계정은 자동 연결할 수 없습니다. 운영자에게 문의해 주세요.',409);
+  // D1 batch is transactional. Recheck role/status inside writes to prevent a concurrent promotion bypass.
+  await env.DB.batch([
+   env.DB.prepare("INSERT INTO mm_users(id,email,name,password,role,verified,created_at,consent_at) SELECT ?,email,name,?,'user',1,?,? FROM mm_legacy_members WHERE email=? AND claimed_by IS NULL ON CONFLICT(email) DO NOTHING").bind(id,password,at,at,email),
+   env.DB.prepare("UPDATE mm_users SET password=?,verified=1,consent_at=? WHERE email=? AND role='user' AND disabled=0 AND EXISTS (SELECT 1 FROM mm_legacy_members l WHERE l.email=mm_users.email AND (l.claimed_by IS NULL OR l.claimed_by=mm_users.id))").bind(password,at,email),
+   env.DB.prepare("UPDATE mm_legacy_members SET claimed_by=(SELECT id FROM mm_users WHERE email=? AND role='user' AND disabled=0) WHERE email=? AND (claimed_by IS NULL OR claimed_by=(SELECT id FROM mm_users WHERE email=?)) AND EXISTS (SELECT 1 FROM mm_users WHERE email=? AND password=? AND role='user' AND disabled=0)").bind(email,email,email,email,password),
+   env.DB.prepare('DELETE FROM mm_sessions WHERE user_id IN (SELECT id FROM mm_users WHERE email=? AND password=?)').bind(email,password),
+   env.DB.prepare("DELETE FROM mm_auth_tokens WHERE (kind='legacy-activate' AND json_extract(payload,'$.email')=?) OR (kind IN ('reset','verify') AND json_extract(payload,'$.id') IN (SELECT id FROM mm_users WHERE email=? AND password=?))").bind(email,email,password)
+  ]);
+  const user=await env.DB.prepare('SELECT u.*,l.name AS legacyName FROM mm_users u JOIN mm_legacy_members l ON l.claimed_by=u.id WHERE u.email=? AND u.password=? AND u.disabled=0').bind(email,password).first();
+  if(!user||user.role!=='user')throw failure('계정 상태가 변경되었습니다. 다시 요청해 주세요.',409);
+  await env.DB.prepare('INSERT INTO mm_auth_audit VALUES (?,?,?,?,?)').bind(crypto.randomUUID(),user.id,user.id,'legacy:email-verified',at).run();
+  return sessionResponse(user,env);
+ }
  if(path==='forgot'){
   await limit(request,env,'forgot',5);const email=emailValue(data.email);if(!env.AUTH_MAIL_API_KEY||!env.AUTH_MAIL_FROM)throw failure('인증메일 발신 설정이 필요합니다.',503);
   const user=await env.DB.prepare('SELECT id FROM mm_users WHERE email=? AND disabled=0').bind(email).first();
