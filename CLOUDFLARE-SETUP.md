@@ -50,3 +50,12 @@ Preview에는 운영 저장소를 연결하지 않습니다.
 테스트용 `wrangler pages dev dist --d1 DB --r2 MEDIA --r2 PRIVATE_FILES --binding ADMIN_PASSWORD=local-test-password-only --port 8799 --compatibility-date 2026-10-15` 실행 후
 `node tests/cloud-products.cjs`로 실제 로컬 D1·R2 등록/업로드/조회/권한/충돌을 확인합니다.
 테스트 비밀번호는 로컬 테스트 전용입니다. 운영 Secret으로 사용하지 마세요.
+# 기존 제품 자료 이전
+
+제품 등록 및 수정의 **기존 제품 자료 가져오기**에서 검토 완료된 JSON 이전 파일을 선택합니다.
+파일은 `medicalmarket-products-v1` 형식이며 제품명·모델·제조사·카테고리·설명과 WebP 이미지만 포함해야 합니다.
+개인 연락 정보와 회원·담당자 데이터는 사전에 제거합니다. 이전 원본 파일은 공개 Git 저장소에 넣지 않습니다.
+로그인된 운영자만 실행할 수 있으며 이미지 내용의 SHA-256을 검증하고 동일 사진을 재사용합니다.
+기존 ID의 제품은 덮어쓰지 않습니다. 중단 시 같은 파일을 선택하면 미등록 제품부터 재개합니다.
+이전하는 동안 화면을 닫지 마세요. 완료 후 저장·기존·실패 건수를 확인합니다.
+

@@ -20,7 +20,7 @@ document.addEventListener('change',async event=>{
    const needed=new Set(pending.flatMap(p=>[...(p.gallery||[]),...((p.descriptionHtml||'').match(/asset:[a-f0-9]{64}/g)||[])].map(x=>x.replace(/^asset:/,''))));
    const entries=Object.entries(pack.images).filter(([hash])=>needed.has(hash)&&!imageUrls.has(hash));
    let cursor=0,uploaded=0;
-   await Promise.all(Array.from({length:3},async()=>{
+   const uploads=await Promise.allSettled(Array.from({length:3},async()=>{
     while(cursor<entries.length){
      const [hash,b64]=entries[cursor++];if(!/^[a-f0-9]{64}$/.test(hash)||typeof b64!=='string')throw Error('사진 형식이 올바르지 않습니다.');
      const bytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
@@ -30,6 +30,7 @@ document.addEventListener('change',async event=>{
      progress(`파일 ${fi+1}/${files.length} · 사진 ${++uploaded}/${entries.length} · 제품 저장 ${completed}개 · 기존 ${skipped}개`);
     }
    }));
+   const failedUpload=uploads.find(result=>result.status==='rejected');if(failedUpload)throw failedUpload.reason;
    for(const source of pending){
     try{
      const replace=url=>{if(!/^asset:[a-f0-9]{64}$/.test(url))throw Error('승인된 이전 사진만 사용할 수 있습니다.');const value=imageUrls.get(url.slice(6));if(!value)throw Error('사진 업로드가 완료되지 않았습니다.');return value;};
