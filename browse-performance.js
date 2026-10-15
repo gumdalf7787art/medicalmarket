@@ -61,7 +61,7 @@ document.addEventListener('click',async event=>{
  productImportRunning=true;cloudSaving=true;button.disabled=true;let completed=0,bytes=0;const errors=[];
  const status=document.getElementById('thumbnail-progress');
  try{await cloudLoadProducts();const urls=[...new Set(Object.values(managementState.products).flatMap(p=>[p.image,...(p.gallery||[])]).filter(url=>/^\/media\/[a-f0-9-]{36}\.webp$/.test(url)))];let cursor=0;
- await Promise.all(Array.from({length:3},async()=>{while(cursor<urls.length){const url=urls[cursor++];try{const response=await fetch(url);if(!response.ok)throw Error('사진 읽기 실패');bytes+=await saveImageThumbnail(url,await response.blob())||0;completed++;}catch(error){errors.push(url);}status.textContent=`썸네일 ${completed}/${urls.length}개 · 실패 ${errors.length}개 · ${(bytes/1024/1024).toFixed(2)}MB`;}}));
+ await Promise.all(Array.from({length:3},async()=>{while(cursor<urls.length){const url=urls[cursor++];try{const response=await fetch(url);if(!response.ok)throw Error('사진 읽기 실패');const savedBytes=await saveImageThumbnail(url,await response.blob());bytes+=savedBytes||0;completed++;}catch(error){errors.push(url);}status.textContent=`썸네일 ${completed}/${urls.length}개 · 실패 ${errors.length}개 · ${(bytes/1024/1024).toFixed(2)}MB`;}}));
  status.textContent+=errors.length?' · 다시 실행하면 재생성할 수 있습니다.':' · 완료';
  }catch(error){status.textContent=error.message;}finally{productImportRunning=false;cloudSaving=false;button.disabled=false;}
 });
