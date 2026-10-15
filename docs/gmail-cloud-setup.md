@@ -4,7 +4,8 @@ Cloudflare Pages production variables:
 
 - `GMAIL_CLIENT_ID`: Secret, Google Web application OAuth client ID.
 - `GMAIL_CLIENT_SECRET`: Secret, corresponding client secret.
-- `SITE_URL`: Text, `https://medicalmarket.pages.dev`.
+- `GMAIL_SITE_URL`: Text, `https://medicalmarket.pages.dev`.
+- Keep the existing `SITE_URL` used by member login unchanged. Gmail prefers `GMAIL_SITE_URL` and falls back to `SITE_URL` when omitted.
 - Existing `DB` binding and operator authentication must remain configured.
 
 Google Auth Platform → Clients → Web client → Authorized redirect URIs:

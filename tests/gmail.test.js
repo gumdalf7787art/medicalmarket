@@ -7,7 +7,7 @@ import {unseal,seal} from '../server/gmail.js';
 test('Gmail OAuth requires admin, binds state to session, encrypts tokens and refreshes without leaking credentials',async()=>{
  const db=new DatabaseSync(':memory:');
  const DB={prepare(sql){let args=[];return {bind(...v){args=v;return this;},async first(){return db.prepare(sql).get(...args)||null;},async run(){return db.prepare(sql).run(...args);}};},async batch(items){return Promise.all(items.map(x=>x.run()));}};
- const env={DB,ADMIN_PASSWORD:'test-only-admin-password',GMAIL_CLIENT_ID:'client-test',GMAIL_CLIENT_SECRET:'test-client-secret',SITE_URL:'https://example.test'};
+ const env={DB,ADMIN_PASSWORD:'test-only-admin-password',GMAIL_CLIENT_ID:'client-test',GMAIL_CLIENT_SECRET:'test-client-secret',SITE_URL:'https://member.example.test',GMAIL_SITE_URL:'https://example.test'};
  const value=(Date.now()+3600000)+'.test';const admin='mm_admin='+value+'.'+await mac(value,env);
  const request=(path,method='GET',cookies=admin,origin='https://example.test')=>onRequest({env,request:new Request('https://example.test/api/mail/'+path,{method,headers:{Cookie:cookies,Origin:origin,'CF-Connecting-IP':'test'}})});
  assert.equal((await request('status','GET','')).status,401);

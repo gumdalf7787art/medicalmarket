@@ -3,6 +3,7 @@ import {authSchema,putToken,takeToken,random,digest,cookie,readCookie,siteOrigin
 
 const scopes=['https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.send'];
 const callbackPath='/api/mail/oauth/callback';
+const gmailOrigin=(request,env)=>siteOrigin(request,{...env,SITE_URL:env.GMAIL_SITE_URL||env.SITE_URL});
 const enc=new TextEncoder();
 const b64=bytes=>btoa(String.fromCharCode(...new Uint8Array(bytes)));
 const un64=text=>Uint8Array.from(atob(text),c=>c.charCodeAt(0));
@@ -23,16 +24,16 @@ export async function gmailAction({request,env}){
  if(request.method==='GET'&&path==='status'){
   let connected=false,email='',error='';
   if(configured(env)&&await env.DB.prepare('SELECT id FROM mm_gmail_connection WHERE id=1').first())try{const access=await gmailAccess(env);const profile=await google('https://gmail.googleapis.com/gmail/v1/users/me/profile',{headers:{Authorization:'Bearer '+access.access_token}});email=profile.emailAddress;connected=email===access.email;}catch(e){error=e.status?e.message:'Gmail 연결을 확인하지 못했습니다. 다시 연결해 주세요.';}
-  return json({provider:'gmail-api',configured:configured(env),connected,email,error,attachment:null,workflowReady:false,redirectUri:siteOrigin(request,env)+callbackPath});
+  return json({provider:'gmail-api',configured:configured(env),connected,email,error,attachment:null,workflowReady:false,redirectUri:gmailOrigin(request,env)+callbackPath});
  }
  if(request.method==='POST')sameOrigin(request);
  if(request.method==='POST'&&path==='oauth/start'){
   if(!configured(env))throw failure('Cloudflare에 GMAIL_CLIENT_ID와 GMAIL_CLIENT_SECRET을 등록해 주세요.',503);
-  if(new URL(request.url).origin!==siteOrigin(request,env))throw failure('정식 홈페이지 주소에서 연결해 주세요.',400);
+  if(new URL(request.url).origin!==gmailOrigin(request,env))throw failure('정식 홈페이지 주소에서 연결해 주세요.',400);
   await limit(request,env,'gmail-connect',10);
   const verifier=random(),binding=await sessionBinding(request),state=await putToken(env,'gmail-oauth',{verifier,binding},10);
   const challenge=b64(await crypto.subtle.digest('SHA-256',enc.encode(verifier))).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');
-  const url=new URL('https://accounts.google.com/o/oauth2/v2/auth');url.search=new URLSearchParams({client_id:env.GMAIL_CLIENT_ID,redirect_uri:siteOrigin(request,env)+callbackPath,response_type:'code',scope:scopes.join(' '),access_type:'offline',prompt:'consent select_account',state,code_challenge:challenge,code_challenge_method:'S256'}).toString();
+  const url=new URL('https://accounts.google.com/o/oauth2/v2/auth');url.search=new URLSearchParams({client_id:env.GMAIL_CLIENT_ID,redirect_uri:gmailOrigin(request,env)+callbackPath,response_type:'code',scope:scopes.join(' '),access_type:'offline',prompt:'consent select_account',state,code_challenge:challenge,code_challenge_method:'S256'}).toString();
   return json({url:url.href},200,{'Set-Cookie':cookie('mm_gmail_oauth',state,600)});
  }
  if(request.method==='GET'&&path==='oauth/callback'){
@@ -42,14 +43,14 @@ export async function gmailAction({request,env}){
    const pending=await takeToken(env,state,'gmail-oauth');if(pending.binding!==await sessionBinding(request))throw Error();
    if(query.get('error'))result='cancelled';else{
     if(!query.get('code'))throw Error();
-    const tokens=await exchange(env,{grant_type:'authorization_code',code:query.get('code'),redirect_uri:siteOrigin(request,env)+callbackPath,code_verifier:pending.verifier});
+    const tokens=await exchange(env,{grant_type:'authorization_code',code:query.get('code'),redirect_uri:gmailOrigin(request,env)+callbackPath,code_verifier:pending.verifier});
     if(!tokens.access_token||!tokens.refresh_token||!scopes.every(s=>String(tokens.scope||'').split(' ').includes(s)))throw Error();
     const profile=await google('https://gmail.googleapis.com/gmail/v1/users/me/profile',{headers:{Authorization:'Bearer '+tokens.access_token}});
     if(!profile.emailAddress)throw Error();
     await save(env,profile.emailAddress,{access_token:tokens.access_token,refresh_token:tokens.refresh_token,expires:Date.now()+Number(tokens.expires_in||3600)*1000});result='connected';
    }
   }catch{/* Never reflect authorization codes, provider errors or tokens into the page. */}
-  return new Response(null,{status:303,headers:{Location:siteOrigin(request,env)+'/?gmail='+result+'#ops/mail','Set-Cookie':cookie('mm_gmail_oauth','',0),'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
+  return new Response(null,{status:303,headers:{Location:gmailOrigin(request,env)+'/?gmail='+result+'#ops/mail','Set-Cookie':cookie('mm_gmail_oauth','',0),'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
  }
  throw failure('이 메일 기능은 아직 클라우드 연결 작업 중입니다.',501);
 }
