@@ -1,7 +1,8 @@
 const cloudMode = !['localhost','127.0.0.1',''].includes(location.hostname) || new URLSearchParams(location.search).get('cloud')==='1';
 let cloudReady=!cloudMode,cloudAuthenticated=false,cloudConfigured=false,cloudError='',cloudStorageStatus=null,cloudSaving=false;
-const CLOUD_CATALOG_CACHE='mm-public-catalog-v1';
+const CLOUD_CATALOG_CACHE='mm-public-catalog-v2';
 function cloudApplyRows(rows){
+  rows=rows.map(row=>{const old=managementState.products[row.id];return row._summary&&old&&!old._summary&&old.updatedAt===row.updatedAt?{...old,...row,_summary:false}:row;});
   managementState={products:Object.fromEntries(rows.map(p=>[p.id,{...p,descriptionHtml:sanitizeProductHtml(p.descriptionHtml)}])),categories:null};
   managementProducts.splice(0);products.splice(0);applyManagedProducts();
 }
@@ -16,7 +17,7 @@ async function cloudRequest(path,options={}){
 }
 async function cloudLoadProducts(){
   const rows=[];let after='';
-  do{const data=await cloudRequest('products?bulk=1&'+(cloudAuthenticated?'admin=1&':'')+'after='+encodeURIComponent(after));rows.push(...data.products);after=data.next;}while(after);
+  do{const data=await cloudRequest('products?bulk=1&'+(cloudAuthenticated?'admin=1&':'summary=1&')+'after='+encodeURIComponent(after));rows.push(...data.products);after=data.next;}while(after);
   cloudApplyRows(rows);cloudCacheRows(rows);
 }
 function cloudLoginPanel(){return `<section class="admin-panel"><h2>제품 관리 로그인</h2><p>제품 정보와 사진을 저장하려면 운영자 로그인이 필요합니다.</p>${!cloudConfigured?'<p class="notice warn">Cloudflare → Settings → Variables and secrets에 ADMIN_PASSWORD를 Secret으로 추가하고 재배포하세요. 다른 계정과 겹치지 않는 12자 이상의 운영자 비밀번호를 사용하세요.</p>':''}<form id="cloud-login"><label>운영자 비밀번호<input name="password" type="password" autocomplete="current-password" required minlength="12"></label><button class="primary" ${cloudSaving?'disabled':''}>로그인</button></form>${cloudError?`<p role="alert">${e(cloudError)}</p>`:''}</section>`;}
@@ -34,7 +35,7 @@ async function saveCloudManagement(next){
   if(cloudSaving)throw Error('저장이 진행 중입니다. 잠시 기다려 주세요.');
   cloudSaving=true;
   try{const [,row]=changes[0];const {product:stored}=await cloudRequest('products',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...row,gallery:row.gallery||[],descriptionHtml:row.descriptionHtml||''})});
-    managementState={...managementState,products:{...managementState.products,[stored.id]:stored}};applyManagedProducts();cloudCacheRows(Object.values(managementState.products));return true;
+    managementState={...managementState,products:{...managementState.products,[stored.id]:stored}};applyManagedProducts();cloudCacheRows(Object.values(managementState.products));catalogPages.clear();detailLoads.clear();return true;
   }finally{cloudSaving=false;}
 }
 async function uploadCloudPhoto(file){
@@ -46,7 +47,7 @@ async function uploadCloudPhoto(file){
     const scale=Math.min(1,1600/Math.max(bitmap.width,bitmap.height)),canvas=document.createElement('canvas');
     canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);
     const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/webp',0.84));if(!blob||blob.type!=='image/webp')throw Error('사진 최적화에 실패했습니다.');
-    return (await cloudRequest('image',{method:'POST',headers:{'Content-Type':'image/webp'},body:blob})).url;
+    const url=(await cloudRequest('image',{method:'POST',headers:{'Content-Type':'image/webp'},body:blob})).url;await saveImageThumbnail(url,blob);return url;
   }finally{bitmap.close();}
 }
 document.addEventListener('submit',async event=>{

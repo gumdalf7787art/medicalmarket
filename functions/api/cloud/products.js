@@ -21,12 +21,30 @@ export function cleanProduct(p){
 export const onRequestGet=safeHandler(async({request,env})=>{
   if(!env.DB)throw failure('DB 바인딩을 확인해 주세요.',503);
   const admin=new URL(request.url).searchParams.get('admin')==='1';if(admin)await requireAdmin(request,env);
+  const params=new URL(request.url).searchParams;
+  if(params.has('id')){
+    const row=await env.DB.prepare('SELECT payload,revision FROM mm_products WHERE id=? '+(admin?'':'AND published=1 AND deleted=0')).bind(params.get('id')).first();
+    if(!row)throw failure('제품을 찾을 수 없습니다.',404);
+    return json({product:{...JSON.parse(row.payload),revision:row.revision}});
+  }
+  const summary=p=>({id:p.id,name:p.name,model:p.model,maker:p.maker,categoryIds:p.categoryIds,image:p.image,imageFit:p.imageFit,published:p.published,deleted:p.deleted,updatedAt:p.updatedAt,_summary:true});
+  if(params.has('page')){
+    const page=Math.max(1,Math.min(100000,Number.parseInt(params.get('page'))||1));
+    const category=params.get('category')||'',q=(params.get('q')||'').slice(0,100).toLowerCase();
+    if(category&&!/^([a-z0-9]{2}){1,3}$/.test(category))throw failure('제품 분류를 확인해 주세요.');
+    const where="published=1 AND deleted=0 AND (?='' OR EXISTS(SELECT 1 FROM json_each(json_extract(payload,'$.categoryIds')) WHERE substr(value,1,length(?))=?)) AND instr(lower(json_extract(payload,'$.name')||' '||json_extract(payload,'$.model')),?)>0";
+    const args=[category,category,category,q];
+    const count=await env.DB.prepare('SELECT count(*) AS total FROM mm_products WHERE '+where).bind(...args).first();
+    const pages=Math.max(1,Math.ceil(count.total/15)),current=Math.min(page,pages);
+    const result=await env.DB.prepare("SELECT payload FROM mm_products WHERE "+where+" ORDER BY (coalesce(json_extract(payload,'$.image'),'')!='') DESC,id LIMIT 15 OFFSET ?").bind(...args,(current-1)*15).all();
+    return json({products:result.results.map(r=>summary(JSON.parse(r.payload))),total:count.total,page:current,pages});
+  }
   const after=new URL(request.url).searchParams.get('after')||'';
   const limit=new URL(request.url).searchParams.get('bulk')==='1'?1000:50;
   let rows;
   try{rows=await env.DB.prepare('SELECT id,payload,revision FROM mm_products WHERE id > ? '+(admin?'':'AND published=1 AND deleted=0 ')+'ORDER BY id LIMIT ?').bind(after,limit).all();}
   catch(e){if(String(e).includes('no such table'))return json({products:[],next:null,initialized:false});throw e;}
-  return json({products:rows.results.map(r=>({...JSON.parse(r.payload),revision:r.revision})),next:rows.results.length===limit?rows.results.at(-1).id:null,initialized:true});
+  return json({products:rows.results.map(r=>params.get('summary')==='1'?summary(JSON.parse(r.payload)):({...JSON.parse(r.payload),revision:r.revision})),next:rows.results.length===limit?rows.results.at(-1).id:null,initialized:true});
 });
 export const onRequestPost=safeHandler(async({request,env})=>{
   sameOrigin(request);await requireAdmin(request,env);await schema(env);

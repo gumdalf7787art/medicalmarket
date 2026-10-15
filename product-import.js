@@ -1,6 +1,6 @@
 // Only explicitly selected, pre-reviewed product packages are imported. No local DB discovery.
 let productImportRunning=false;
-function productImportPanel(){return cloudMode&&cloudAuthenticated?`<details class="admin-panel"><summary>기존 제품 자료 가져오기</summary><p>개인정보를 제거한 제품 이전 파일만 선택하세요. 기존 제품은 덮어쓰지 않으며, 실패한 파일은 다시 실행할 수 있습니다.</p><label>제품 이전 파일<input id="product-import-files" type="file" accept=".json" multiple ${productImportRunning?'disabled':''}></label><p id="product-import-progress" role="status"></p></details>`:'';}
+function productImportPanel(){return cloudMode&&cloudAuthenticated?`<details class="admin-panel"><summary>기존 제품 자료 가져오기</summary><p>개인정보를 제거한 제품 이전 파일만 선택하세요. 기존 제품은 덮어쓰지 않으며, 실패한 파일은 다시 실행할 수 있습니다.</p><label>제품 이전 파일<input id="product-import-files" type="file" accept=".json" multiple ${productImportRunning?'disabled':''}></label><p id="product-import-progress" role="status"></p><button type="button" data-build-thumbnails>목록용 썸네일 만들기</button><p id="thumbnail-progress" role="status"></p></details>`:'';}
 window.addEventListener('beforeunload',event=>{if(productImportRunning){event.preventDefault();event.returnValue='';}});
 document.addEventListener('change',async event=>{
  if(event.target.id!=='product-import-files'||productImportRunning)return;

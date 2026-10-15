@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef } from 'react';
+import React, { useLayoutEffect, useEffect, useState, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import parse, { attributesToProps, domToReact } from 'html-react-parser';
@@ -51,10 +51,16 @@ function DomRegion({ tag:Tag, props, html }) {
   useLayoutEffect(()=>{ref.current.innerHTML=html;},[html]);
   return <Tag {...props} ref={ref} suppressContentEditableWarning />;
 }
+function DeferredImage({props}) {
+  const ref=useRef(null),[ready,setReady]=useState(false),[loaded,setLoaded]=useState(false);
+  useEffect(()=>{if(!('IntersectionObserver' in window)){setReady(true);return;}const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){setReady(true);observer.disconnect();}},{rootMargin:'800px 0px'});observer.observe(ref.current);return ()=>observer.disconnect();},[]);
+  return <img {...props} ref={ref} src={ready?props.src:undefined} decoding="async" onLoad={()=>setLoaded(true)} style={{...props.style,...(!loaded&&!props.height?{minHeight:'160px'}:{})}}/>;
+}
 function TemplateContent({ html }) {
   const options={replace(node) {
     if(!node.attribs) return;
     const props=attributesToProps(node.attribs);
+    if(node.name==='img'&&node.attribs.loading==='lazy')return <DeferredImage props={props}/>;
     if(node.name==='script') return <></>;
     // React select uses defaultValue on the select rather than selected options.
     if(node.name==='select') {

@@ -7,6 +7,13 @@ export const onRequestPost=safeHandler(async({request,env})=>{
   if(bytes.length<20||ascii(0,4)!=='RIFF'||ascii(8,12)!=='WEBP'||request.headers.get('Content-Type')!=='image/webp')throw failure('웹 최적화된 WebP 사진만 저장할 수 있습니다.');
   const requestedHash=request.headers.get('X-Image-SHA256');
   let name=crypto.randomUUID()+'.webp';
+  const parent=request.headers.get('X-Thumbnail-For');
+  if(parent){
+    if(!/^[a-f0-9-]{36}\.webp$/.test(parent)||bytes.length>512*1024||!await env.MEDIA.head('product-images/'+parent))throw failure('원본 사진을 확인해 주세요.');
+    name=parent.replace('.webp','-thumb.webp');
+    await env.MEDIA.put('product-images/'+name,bytes,{httpMetadata:{contentType:'image/webp'}});
+    return json({url:'/media/'+parent+'?thumb=1'});
+  }
   if(requestedHash){
     const actual=[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(b=>b.toString(16).padStart(2,'0')).join('');
     if(actual!==requestedHash)throw failure('사진 무결성 검증에 실패했습니다.');

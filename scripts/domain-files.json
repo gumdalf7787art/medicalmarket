@@ -16,6 +16,7 @@
   "reply-ui.js",
   "gmail-ui.js",
   "cloud-ui.js",
+  "browse-performance.js",
   "app.js",
   "product-import.js"
 ]
