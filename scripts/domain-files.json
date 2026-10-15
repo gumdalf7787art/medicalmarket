@@ -17,6 +17,7 @@
   "gmail-ui.js",
   "cloud-ui.js",
   "browse-performance.js",
+  "auth-ui.js",
   "app.js",
   "product-import.js"
 ]

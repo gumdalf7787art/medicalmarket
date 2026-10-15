@@ -1,5 +1,5 @@
 'use strict';
-const KEY='medicalmarket-public-demo-v1';
+let KEY='medicalmarket-public-demo-v1';
 const categories=['전체 제품',...homeCategoryNames];
 const products=[
  {id:'p1',name:'전동 진료 테이블',model:'DEMO-T200',cat:1,type:'테이블',spec:'높이 조절 · 3단 분할',cost:1000000},

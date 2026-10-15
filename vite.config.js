@@ -23,18 +23,19 @@ function medicalMarketDomain() {
       code = code.slice(0,start) + `
 function render(){
   const [route,id]=(location.hash.slice(1)||(['/product','/product.html'].includes(location.pathname)?'product/'+(new URLSearchParams(location.search).get('id')||''):'home')).split('/');
-  const views={home,'home-process':home,'home-categories':home,catalog,product:()=>detail(id),request,favorites,mine,ops:()=>adminPage(id),track:()=>track(id),work:()=>work(id),quote:()=>quote(id)};
+  const views={auth:()=>authPage(id),account:accountPage,home,'home-process':home,'home-categories':home,catalog,product:()=>detail(id),request,favorites,mine,ops:()=>adminPage(id),track:()=>track(id),work:()=>work(id),quote:()=>quote(id)};
   const isAdmin=['ops','work','quote'].includes(route);
   document.title=route==='product'&&product(id)?product(id).name+' | 메디컬마켓':'메디컬마켓 시즌2';
   document.body.classList.toggle('is-browse',['catalog','favorites','product','request','mine','track'].includes(route));
   document.body.classList.toggle('is-home',route==='home'||route.startsWith('home-'));
-  document.body.classList.toggle('is-admin',isAdmin);
+  document.body.classList.toggle('is-admin',isAdmin&&(!cloudMode||cloudAuthenticated));
   const homeRoute=route==='home'||route.startsWith('home-');
-  const content=cloudMode&&!cloudReady&&!homeRoute?'<section class="page-skeleton" aria-label="화면 준비 중"><div></div><div></div></section>':(views[route]||missing)();
-  renderApplication({route,id,isAdmin,content:(cloudMode&&cloudError?'<p role="alert" class="notice warn">'+e(cloudError)+'</p>':'')+content,favorites:state.favorites.length,
+  const gated=isAdmin&&cloudMode&&!cloudAuthenticated;
+  const content=gated?authGate():cloudMode&&!cloudReady&&!homeRoute?'<section class="page-skeleton" aria-label="화면 준비 중"><div></div><div></div></section>':(views[route]||missing)();
+  renderApplication({route,id,isAdmin:isAdmin&&!gated,authUser,content:(cloudMode&&cloudError?'<p role="alert" class="notice warn">'+e(cloudError)+'</p>':'')+content,favorites:state.favorites.length,
     menus:adminMenus,newRequests:adminCount(0),
     adminPage:route==='ops'?(id||'dashboard'):route==='quote'?'quotes':'requests'});
-  if(isAdmin&&window.innerWidth<750)document.querySelector('.admin-navigation').open=false;
+  if(isAdmin&&!gated&&window.innerWidth<750)document.querySelector('.admin-navigation').open=false;
   const tree=document.querySelector('.catalog-tree');if(tree)tree.scrollTop=categoryTreeScroll;
   if(route.startsWith('home-'))requestAnimationFrame(()=>document.getElementById(route)?.scrollIntoView({block:'start'}));
 }

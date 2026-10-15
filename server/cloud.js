@@ -1,3 +1,4 @@
+import {currentUser} from './auth.js';
 export const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {status, headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers}});
 export function failure(message, status = 400) { return Object.assign(new Error(message), {status}); }
 export async function limitedBody(request, limit) {
@@ -13,6 +14,10 @@ const secret=env=>env.ADMIN_PASSWORD;
 export async function mac(value,env){const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(secret(env)),{name:'HMAC',hash:'SHA-256'},false,['sign']);return [...new Uint8Array(await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(value)))].map(v=>v.toString(16).padStart(2,'0')).join('');}
 export async function equal(a,b){const hash=async s=>new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)));const x=await hash(a),y=await hash(b);return x.reduce((v,n,i)=>v|(n^y[i]),0)===0;}
 export async function authenticated(request,env){
+  const member=await currentUser(request,env);
+  if(member)return member.role==='admin';
+  // Setting OWNER_EMAIL retires the shared password, including already-issued cookies.
+  if(env.OWNER_EMAIL)return false;
   if(!secret(env)||secret(env).length<12)return false;
   const token=request.headers.get('Cookie')?.match(/(?:^|;\s*)mm_admin=([^;]+)/)?.[1]||'';
   const [expires,nonce,signature]=token.split('.');

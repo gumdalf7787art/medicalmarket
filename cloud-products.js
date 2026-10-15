@@ -73,8 +73,8 @@ queueMicrotask(async()=>{
     const cached=JSON.parse(sessionStorage.getItem(CLOUD_CATALOG_CACHE)||'null');
     if(cached&&Array.isArray(cached.rows)&&Date.now()-cached.at>=0&&Date.now()-cached.at<60000){cloudApplyRows(cached.rows);cloudReady=true;render();}
   }catch{/* A corrupt cache must not block loading. */}
-  try{const [session,status]=await Promise.all([cloudRequest('session'),cloudRequest('status')]);cloudAuthenticated=session.authenticated;cloudConfigured=session.configured;cloudStorageStatus=status;await cloudLoadProducts();}
-  catch(error){cloudError=error.message;}finally{cloudReady=true;render();}
+  try{const [session,status,member]=await Promise.all([cloudRequest('session'),cloudRequest('status'),authFetch('session')]);authBootstrap=session.bootstrapAllowed;adoptAuthUser(member.user);authProviders=member.providers;authEmailReady=member.emailReady;authReady=true;cloudAuthenticated=session.authenticated;cloudConfigured=session.configured;cloudStorageStatus=status;await cloudLoadProducts();}
+  catch(error){cloudError=error.message;}finally{cloudReady=true;authReady=true;render();}
 });
 
 // Keep ordinary internal navigation in React; new tabs/downloads retain native behavior.

@@ -6,7 +6,7 @@ import parse, { attributesToProps, domToReact } from 'html-react-parser';
 let root;
 let revision = 0;
 
-export function SiteHeader({ route, favorites }) {
+export function SiteHeader({ route, favorites, authUser }) {
   return <header>
     <a href="#home" className="brand"><span>메디컬마켓<small>MEDICAL MARKET</small></span></a>
     <nav aria-label="주 메뉴">
@@ -15,7 +15,7 @@ export function SiteHeader({ route, favorites }) {
       <a className={route==='favorites'?'active':''} href="#favorites">관심제품 <span id="favorite-count">{favorites}</span></a>
       <a className={route==='mine'?'active':''} href="#mine">요청 목록 보기</a>
     </nav>
-    <a href="#ops" className="ops-link">운영 화면 ↗</a>
+    <div className="member-header">{authUser?.role==='admin'?<a href="#ops" className="ops-link">운영 화면 ↗</a>:null}<a href={authUser?"#account":"#auth/login"}>{authUser?authUser.name+"님":"로그인"}</a>{!authUser?<a href="#auth/signup">회원가입</a>:null}</div>
   </header>;
 }
 
@@ -33,7 +33,7 @@ export function AdminLayout({ page, menus, newRequests, children }) {
           </a>)}
         </div>)}</nav>
       </details>
-      <div className="admin-sidebar-foot"><span className="admin-dot"/> 로컬 운영 화면<small>로그인·운영 DB 연결 전</small><a href="#home">고객 홈페이지 ↗</a></div>
+      <div className="admin-sidebar-foot"><span className="admin-dot"/> 운영 관리<small>지정된 운영자 전용</small><a href="#home">고객 홈페이지 ↗</a></div>
     </aside>
     <div className="admin-main">
       <div className="admin-topbar"><span>운영 관리 <i>/</i> {title}</span><div><a href="#ops/requests">요청 검색</a><a href="#home">고객 화면 ↗</a><span className="admin-avatar">M</span></div></div>
@@ -98,7 +98,7 @@ export function OperationsPage({ content }) { return <TemplateContent html={cont
 
 function Application(props) {
   return <>
-    <SiteHeader route={props.route} favorites={props.favorites}/>
+    <SiteHeader route={props.route} favorites={props.favorites} authUser={props.authUser}/>
     <main id="app"><div key={props.revision} style={{display:'contents'}} data-react-page={props.route}>
       {props.isAdmin?<AdminLayout page={props.adminPage} menus={props.menus} newRequests={props.newRequests}>
         <OperationsPage content={props.content}/>

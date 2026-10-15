@@ -1,7 +1,7 @@
 const {chromium}=require('@playwright/test');
 const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),assert=require('node:assert/strict');
 const root=process.cwd(),dist=path.join(root,'dist');
-const key=fs.readFileSync(path.join(root,'app.js'),'utf8').match(/const KEY='([^']+)'/)[1];
+const key=fs.readFileSync(path.join(root,'app.js'),'utf8').match(/(?:const|let) KEY='([^']+)'/)[1];
 const catalogKey=fs.readFileSync(path.join(root,'management.js'),'utf8').match(/const MANAGEMENT_KEY='([^']+)'/)[1];
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.woff':'font/woff'};
 const supplier={id:'qa-supplier',company:'검증 공급사',type:'판매업체',companyPhone:'02-0000-1111',companyEmail:'supplier@example.com',contacts:[{id:'qa-person',name:'검증 담당자',email:'contact@example.com',phone:'02-0000-2222'}],products:[{id:'p1',name:'검증 제품'}],sponsorItems:[],issues:[]};
