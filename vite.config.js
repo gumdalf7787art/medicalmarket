@@ -29,7 +29,8 @@ function render(){
   document.body.classList.toggle('is-browse',['catalog','favorites','product','request','mine','track'].includes(route));
   document.body.classList.toggle('is-home',route==='home'||route.startsWith('home-'));
   document.body.classList.toggle('is-admin',isAdmin);
-  const content=cloudMode&&!cloudReady?'<section class="admin-panel">제품 정보를 불러오는 중입니다.</section>':(views[route]||missing)();
+  const homeRoute=route==='home'||route.startsWith('home-');
+  const content=cloudMode&&!cloudReady&&!homeRoute?'<section class="page-skeleton" aria-label="화면 준비 중"><div></div><div></div></section>':(views[route]||missing)();
   renderApplication({route,id,isAdmin,content:(cloudMode&&cloudError?'<p role="alert" class="notice warn">'+e(cloudError)+'</p>':'')+content,favorites:state.favorites.length,
     menus:adminMenus,newRequests:adminCount(0),
     adminPage:route==='ops'?(id||'dashboard'):route==='quote'?'quotes':'requests'});

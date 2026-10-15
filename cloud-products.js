@@ -79,9 +79,10 @@ document.addEventListener('click',event=>{
   const link=event.target.closest('a[href]');if(!link||link.target||link.hasAttribute('download'))return;
   const url=new URL(link.href,location.href);if(url.origin!==location.origin)return;
   let hash='';
-  if(['/product','/product.html'].includes(url.pathname)&&url.searchParams.has('id'))hash='#product/'+encodeURIComponent(url.searchParams.get('id'));
-  else if(['/','/index.html'].includes(url.pathname)&&url.hash)hash=url.hash;
+  if(['/','/index.html','/product','/product.html'].includes(url.pathname)&&url.hash)hash=url.hash;
+  else if(['/product','/product.html'].includes(url.pathname)&&url.searchParams.has('id'))hash='#product/'+encodeURIComponent(url.searchParams.get('id'));
   if(!hash)return;
   event.preventDefault();
+  rememberBrowsePosition();
   if(location.hash!==hash)location.hash=hash;
 },true);

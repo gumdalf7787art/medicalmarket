@@ -31,7 +31,7 @@ function favorites(){const seen=new Set();const saved=products.filter(p=>{const 
 
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(state));storageError=false;return true;}catch{storageError=true;toast('브라우저 저장이 차단되었습니다. 현재 화면에서만 유지됩니다.');return false;}}
 function toast(text){const t=document.querySelector('#toast');t.textContent=text;t.className='show';clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.className='',4000);}
-function navigate(route){if(location.hash===route)render();else location.hash=route;}
+function navigate(route){rememberBrowsePosition();if(location.hash===route)render();else location.hash=route;}
 function art(p){if(p.image)return `<img src="${e(productThumbnail(p.image))}" alt="${e(p.name)}" loading="lazy" decoding="async">`;const shapes=p.id==='p1'?'<rect x="20" y="44" width="118" height="23" rx="8"/><path d="M38 68v45M116 68v45M38 106h78M64 68l28 38"/>':p.id==='p5'?'<ellipse cx="83" cy="27" rx="35" ry="12"/><path d="M83 39v70M52 112h62M83 72l25-22"/>':p.id==='p4'?'<circle cx="62" cy="78" r="27"/><path d="M61 49l30-20h26M62 78l29 17M97 41v65M32 113h87"/>':'<rect x="38" y="16" width="87" height="62" rx="9"/><rect x="47" y="25" width="69" height="39" rx="4" fill="#d2e6dc"/><path d="M48 46h12l8-12 12 24 9-15h23M81 79v27M51 111h61"/>';
  return `<svg viewBox="0 0 160 140" role="img" aria-label="${e(p.name)} 개념 그림"><g fill="#fcfefb" stroke="#649183" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">${shapes}</g><ellipse cx="81" cy="126" rx="53" ry="4" fill="#d2ddd5"/></svg>`;}
 function intro(k,title,desc){return `<div class="eyebrow">${k}</div><h1>${title}</h1><p class="muted">${desc}</p>`;}
@@ -79,4 +79,4 @@ document.addEventListener('input',ev=>{const el=ev.target;if(el.dataset.price===
 document.addEventListener('change',ev=>{const el=ev.target;if(el.dataset.review){const r=getRequest(el.dataset.review);if(r.stage!==2)return;r.reviewed=el.checked;persist();document.querySelector('[data-send]').disabled=!r.reviewed;}
  if(el.dataset.price!==undefined){const r=getRequest(el.dataset.request);if(r.stage!==2)return;const value=Number(el.value);if(!Number.isSafeInteger(value)||value<1||value>1000000000){toast('판매 단가를 1~10억 원의 정수로 입력하세요.');return;}r.prices[Number(el.dataset.price)]=value;persist();}
 });
-window.addEventListener('hashchange',()=>{const position=categoryScrollPosition;categoryScrollPosition=null;render();window.scrollTo(0,browseScrollPositions.get(location.hash)??position??0);});render();
+window.addEventListener('hashchange',()=>{const position=categoryScrollPosition;categoryScrollPosition=null;render();const top=location.hash.startsWith('#catalog')?(browseScrollPositions.get(location.hash)??position??0):0;window.scrollTo({top,left:0,behavior:'instant'});requestAnimationFrame(()=>window.scrollTo({top,left:0,behavior:'instant'}));});render();

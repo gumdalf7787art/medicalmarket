@@ -1,6 +1,7 @@
 const catalogPages=new Map(),detailLoads=new Map();
 const browseScrollPositions=new Map();let catalogReturnHash='#catalog';
-document.addEventListener('click',()=>{browseScrollPositions.set(location.hash,window.scrollY);if(location.hash.startsWith('#catalog'))catalogReturnHash=location.hash;},true);
+history.scrollRestoration='manual';
+function rememberBrowsePosition(){if(location.hash.startsWith('#catalog')){browseScrollPositions.set(location.hash,window.scrollY);catalogReturnHash=location.hash;}}
 function productThumbnail(url){return /^\/media\/[a-f0-9-]{36}\.webp$/.test(url)?url+'?thumb=1':url;}
 function catalogLocation(){const [path,search='']=location.hash.slice(1).split('?');const parts=path.split('/');return {code:parts[1]==='all'?'':parts[1]||'',page:Math.max(1,parseInt(parts[2])||1),q:new URLSearchParams(search).get('q')||''};}
 function catalogHash(code,page,q){return '#catalog/'+(code||'all')+'/'+page+(q?'?q='+encodeURIComponent(q):'');}
