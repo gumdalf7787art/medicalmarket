@@ -19,7 +19,7 @@ export function SiteHeader({ route, favorites, authUser }) {
   </header>;
 }
 
-export function AdminLayout({ page, menus, newRequests, children }) {
+export function AdminLayout({ page, menus, newRequests, replyCount, children }) {
   const current=page.split('-')[0];
   const title=menus.flatMap(g=>g[1]).find(m=>m[0]===current)?.[1]||'견적 업무';
   return <div className="admin-shell">
@@ -29,7 +29,7 @@ export function AdminLayout({ page, menus, newRequests, children }) {
         <nav aria-label="운영 관리 메뉴">{menus.map(([group,items])=><div className="admin-menu-group" key={group}>
           <p>{group}</p>{items.map(([key,label,icon])=><a key={key} href={'#ops'+(key==='dashboard'?'':'/'+key)}
             className={current===key?'selected':''} aria-current={current===key?'page':undefined}>
-            <span aria-hidden="true">{icon}</span>{label}{key==='requests'&&newRequests>0?<b>{newRequests}</b>:null}
+            <span aria-hidden="true">{icon}</span>{label}{key==='requests'&&newRequests>0?<b>{newRequests}</b>:key==='replies'&&replyCount>0?<b aria-label={'확인할 새 회신 '+replyCount+'건'}>{replyCount}</b>:null}
           </a>)}
         </div>)}</nav>
       </details>
@@ -100,7 +100,7 @@ function Application(props) {
   return <>
     <SiteHeader route={props.route} favorites={props.favorites} authUser={props.authUser}/>
     <main id="app"><div key={props.revision} style={{display:'contents'}} data-react-page={props.route}>
-      {props.isAdmin?<AdminLayout page={props.adminPage} menus={props.menus} newRequests={props.newRequests}>
+      {props.isAdmin?<AdminLayout page={props.adminPage} menus={props.menus} newRequests={props.newRequests} replyCount={props.replyCount}>
         <OperationsPage content={props.content}/>
       </AdminLayout>:<CustomerPage content={props.content}/>}
     </div></main>

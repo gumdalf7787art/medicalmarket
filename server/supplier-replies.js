@@ -28,7 +28,8 @@ async function replySchema(env){
  await supplierMailSchema(env);
  await env.DB.batch([
   env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_supplier_replies(gmail_id TEXT PRIMARY KEY,request_id TEXT NOT NULL,thread_id TEXT NOT NULL,sender TEXT NOT NULL,subject TEXT NOT NULL,body TEXT NOT NULL,received_at TEXT NOT NULL,files_json TEXT NOT NULL,linked_at TEXT NOT NULL)'),
-  env.DB.prepare('CREATE INDEX IF NOT EXISTS mm_supplier_replies_request ON mm_supplier_replies(request_id,received_at)')
+  env.DB.prepare('CREATE INDEX IF NOT EXISTS mm_supplier_replies_request ON mm_supplier_replies(request_id,received_at)'),
+  env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_supplier_reply_seen(gmail_id TEXT PRIMARY KEY,seen_at TEXT NOT NULL)')
  ]);
 }
 async function deliveries(env,requestId,includeFollowups=false){
@@ -77,8 +78,8 @@ async function sync(env,requestId){
 }
 async function listing(env,requestId){
  const rows=await deliveries(env,requestId);
- const replyRows=requestId?await env.DB.prepare('SELECT gmail_id,request_id,sender,subject,body,received_at,files_json FROM mm_supplier_replies WHERE request_id=? ORDER BY received_at DESC').bind(requestId).all():await env.DB.prepare('SELECT gmail_id,request_id,sender,subject,substr(body,1,500) AS body,received_at,files_json FROM mm_supplier_replies ORDER BY received_at DESC LIMIT 200').all();
- const grouped=new Map();for(const reply of replyRows.results){const list=grouped.get(reply.request_id)||[];list.push({id:reply.gmail_id,sender:reply.sender,subject:reply.subject,text:reply.body,receivedAt:reply.received_at,files:JSON.parse(reply.files_json)});grouped.set(reply.request_id,list);}
+ const replyRows=requestId?await env.DB.prepare('SELECT r.gmail_id,r.request_id,r.sender,r.subject,r.body,r.received_at,r.files_json,s.seen_at FROM mm_supplier_replies r LEFT JOIN mm_supplier_reply_seen s ON s.gmail_id=r.gmail_id WHERE r.request_id=? ORDER BY r.received_at DESC').bind(requestId).all():await env.DB.prepare('SELECT r.gmail_id,r.request_id,r.sender,r.subject,substr(r.body,1,500) AS body,r.received_at,r.files_json,s.seen_at FROM mm_supplier_replies r LEFT JOIN mm_supplier_reply_seen s ON s.gmail_id=r.gmail_id ORDER BY r.received_at DESC LIMIT 200').all();
+ const grouped=new Map();for(const reply of replyRows.results){const list=grouped.get(reply.request_id)||[];list.push({id:reply.gmail_id,sender:reply.sender,subject:reply.subject,text:reply.body,receivedAt:reply.received_at,files:JSON.parse(reply.files_json),seen:!!reply.seen_at});grouped.set(reply.request_id,list);}
  const results=[];
  for(const row of rows){
   const payload=JSON.parse(row.payload);
@@ -104,13 +105,27 @@ export async function supplierRepliesAction({request,env,path}){
  await replySchema(env);
  const url=new URL(request.url),requestId=url.searchParams.get('requestId')||'';
  if(requestId&&!requestIdPattern.test(requestId))throw failure('견적 요청을 확인해 주세요.');
+ if(request.method==='GET'&&path==='supplier-replies/summary'){
+  const row=await env.DB.prepare('SELECT COUNT(*) AS unread,MAX(r.received_at) AS latest_at FROM mm_supplier_replies r LEFT JOIN mm_supplier_reply_seen s ON s.gmail_id=r.gmail_id WHERE s.gmail_id IS NULL').first();
+  const last=await env.DB.prepare('SELECT MAX(linked_at) AS last_linked_at FROM mm_supplier_replies').first();
+  return json({unread:Number(row?.unread||0),latestAt:row?.latest_at||null,lastLinkedAt:last?.last_linked_at||null});
+ }
  if(request.method==='GET'&&path==='supplier-replies')return json(await listing(env,requestId));
  if(request.method==='GET'&&path==='supplier-replies/file')return download(env,url);
+ if(request.method==='POST'&&path==='supplier-replies/seen'){
+  const input=await bodyJson(request,1024),id=String(input.replyId||'');
+  if(!messageIdPattern.test(id))throw failure('회신을 선택해 주세요.');
+  const found=await env.DB.prepare('SELECT gmail_id FROM mm_supplier_replies WHERE gmail_id=?').bind(id).first();
+  if(!found)throw failure('회신을 찾을 수 없습니다.',404);
+  await env.DB.prepare('INSERT OR IGNORE INTO mm_supplier_reply_seen VALUES (?,?)').bind(id,new Date().toISOString()).run();
+  return json({seen:true});
+ }
  if(request.method==='POST'&&path==='supplier-replies/sync'){
   await limit(request,env,'supplier-replies-sync',20);
   const input=await bodyJson(request,2048),id=String(input.requestId||'');
   if(id&&!requestIdPattern.test(id))throw failure('견적 요청을 확인해 주세요.');
   return json(await sync(env,id));
  }
+ if(request.method==='POST'&&path==='supplier-replies/scheduled')return json(await sync(env,''));
  throw failure('회신 요청을 확인해 주세요.',405);
 }

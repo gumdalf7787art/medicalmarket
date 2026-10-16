@@ -33,10 +33,11 @@ function render(){
   const homeRoute=route==='home'||route.startsWith('home-');
   const gated=isAdmin&&cloudMode&&!cloudAuthenticated;
   const content=gated?authGate():cloudMode&&!cloudReady&&!homeRoute?'<section class="page-skeleton" aria-label="화면 준비 중"><div></div><div></div></section>':(views[route]||missing)();
-  renderApplication({route,id,isAdmin:isAdmin&&!gated,authUser,content:(cloudMode&&cloudError?'<p role="alert" class="notice warn">'+e(cloudError)+'</p>':'')+content,favorites:state.favorites.length,
-    menus:adminMenus,newRequests:adminCount(0),
+  renderApplication({route,id,isAdmin:isAdmin&&!gated,authUser,content:(cloudMode&&cloudError?'<p role="alert" class="notice warn">'+e(cloudError)+'</p>':'')+(isAdmin&&cloudMode&&(id==='dashboard'||!id)?cloudReplyDashboardNotice():'')+content,favorites:state.favorites.length,
+    menus:adminMenus,newRequests:adminCount(0),replyCount:cloudMode?cloudReplyUnread:0,
     adminPage:route==='ops'?(id||'dashboard'):route==='quote'?'quotes':'requests'});
   if(isAdmin&&!gated&&window.innerWidth<750)document.querySelector('.admin-navigation').open=false;
+  if(isAdmin&&!gated&&cloudMode)cloudReplyEnsureWatch();
   const tree=document.querySelector('.catalog-tree');if(tree)tree.scrollTop=categoryTreeScroll;
   if(route.startsWith('home-'))requestAnimationFrame(()=>document.getElementById(route)?.scrollIntoView({block:'start'}));
 }

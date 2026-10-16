@@ -65,6 +65,17 @@ test('request-linked supplier contact sends after per-request confirmation even 
   assert.equal((await (await invoke(mail,'mail','supplier-replies/sync',{requestId},operatorCookie)).json()).linked,0);
   followupArrived=true;assert.equal((await (await invoke(mail,'mail','supplier-replies/sync',{requestId},operatorCookie)).json()).linked,1);
   const linked=(await (await invoke(mail,'mail','supplier-replies?requestId='+requestId,undefined,operatorCookie)).json()).requests[0];assert.equal(linked.replies.length,2);assert.match(linked.replies[0].text,/100만원/);assert.equal(linked.replies[0].files[0].name,'estimate.pdf');
+  assert.equal((await (await invoke(mail,'mail','supplier-replies/summary',undefined,operatorCookie)).json()).unread,2);
+  assert.equal((await invoke(mail,'mail','supplier-replies/summary',undefined,buyerCookie)).status,401);
+  assert.equal((await invoke(mail,'mail','supplier-replies/seen',{replyId:'reply-123'},buyerCookie)).status,401);
+  assert.equal((await invoke(mail,'mail','supplier-replies/seen',{replyId:'reply-123'},operatorCookie)).status,200);
+  assert.equal((await (await invoke(mail,'mail','supplier-replies/summary',undefined,operatorCookie)).json()).unread,1);
+  const afterSeen=(await (await invoke(mail,'mail','supplier-replies?requestId='+requestId,undefined,operatorCookie)).json()).requests[0];
+  assert.equal(afterSeen.replies.find(reply=>reply.id==='reply-123').seen,true);
+  env.MAIL_SYNC_TOKEN='a'.repeat(40);
+  const scheduled=token=>mail({env,request:new Request('https://example.test/api/mail/supplier-replies/scheduled',{method:'POST',headers:{Authorization:'Bearer '+token}})});
+  assert.equal((await scheduled('wrong-token')).status,403);
+  assert.equal((await scheduled(env.MAIL_SYNC_TOKEN)).status,200);
   assert.equal(db.prepare('SELECT stage FROM mm_requests WHERE id=?').get(requestId).stage,2);
   const file=await invoke(mail,'mail','supplier-replies/file?'+new URLSearchParams({requestId,replyId:'reply-123',fileId:'file-123'}),undefined,operatorCookie);assert.equal(file.status,200);assert.equal(file.headers.get('content-type'),'application/octet-stream');assert.equal(await file.text(),'%PDF-1.4');
   assert.equal((await invoke(mail,'mail','supplier-replies/file?'+new URLSearchParams({requestId,replyId:'reply-123',fileId:'wrong-file'}),undefined,operatorCookie)).status,404);

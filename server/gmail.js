@@ -125,6 +125,13 @@ export async function gmailAccess(env){const row=await env.DB.prepare('SELECT * 
 const sessionBinding=request=>digest(readCookie(request,'mm_session')||readCookie(request,'mm_admin'));
 export async function gmailAction({request,env}){
  const path=new URL(request.url).pathname.replace('/api/mail/','');
+ if(path==='supplier-replies/scheduled'&&request.method==='POST'){
+  const {equal}=await import('./cloud.js');
+  const bearer=request.headers.get('Authorization')||'';
+  if(!env.MAIL_SYNC_TOKEN||env.MAIL_SYNC_TOKEN.length<32||!bearer.startsWith('Bearer ')||!await equal(bearer.slice(7),env.MAIL_SYNC_TOKEN))throw failure('접근할 수 없습니다.',403);
+  const {supplierRepliesAction}=await import('./supplier-replies.js');
+  return supplierRepliesAction({request,env,path});
+ }
  // Strict administrator cookies are withheld on Google's cross-site redirect.
  // Finish through a same-origin POST, where the original cookie is available.
  // Keep same-origin referrers: no-referrer makes form POST Origin null in browsers.
@@ -188,7 +195,7 @@ export async function gmailAction({request,env}){
   await supplierMailSchema(env);
   return json(await supplierSend(request,env,await bodyJson(request,8192)));
  }
- if(path==='supplier-replies'||path==='supplier-replies/sync'||path==='supplier-replies/file'){
+ if(path==='supplier-replies'||path==='supplier-replies/sync'||path==='supplier-replies/file'||path==='supplier-replies/summary'||path==='supplier-replies/seen'){
   const {supplierRepliesAction}=await import('./supplier-replies.js');
   return supplierRepliesAction({request,env,path});
  }
