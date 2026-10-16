@@ -20,6 +20,7 @@ let browser;
  page.on('pageerror',error=>errors.push(error.message));
  let stage=0;
  let supplier=null;
+ let supplierHasEmail=true;
  const record=()=>({id:'REQ-real-1',product:{id:'managed-qa',name:'실제 장비',model:'QA-100',maker:'제조사',image:'assets/sample-device.svg'},qty:1,profile:{hospital:'실제 병원',email:'qa@example.test',phone:'010-0000-0000',province:'서울특별시',district:'강남구'},stage,cancelled:false,hasQuote:false,createdAt:'2026-10-16T01:00:00Z',memo:'검증',unread:false});
  await page.route('**/api/**',async route=>{
   const req=route.request(),url=new URL(req.url()),p=url.pathname;
@@ -35,7 +36,8 @@ let browser;
    supplier={...body,id:'supplier-1'};data={supplier};
   }
   else if(p==='/api/suppliers')data={suppliers:supplier?[supplier]:[],total:supplier?1:0,page:1};
-  else if(p==='/api/mail/supplier-options')data={suppliers:[{id:'linked-supplier',company:'시험 제조사',email:'supplier@example.test',phone:'02-0000-0000',companyEmail:'',active:false,classification:'candidate',reviewStatus:'needs_review',contacts:[{id:'staff-1',name:'견적 담당자',email:'staff@example.test',phone:'02-1111-1111',mobile:'010-1111-1111'}]}],delivery:null,gmailEmail:'sender@example.test',product:record().product,qty:1,requestStage:stage,cancelled:false};
+  else if(p==='/api/suppliers/linked-supplier')data={supplier:{id:'linked-supplier',company:'시험 제조사',companyPhone:'02-0000-0000',companyEmail:'',email:'supplier@example.test',phone:'02-0000-0000',contacts:[{id:'staff-1',name:'견적 담당자',email:'staff@example.test',phone:'02-1111-1111',mobile:'010-1111-1111'}],classification:'candidate',reviewStatus:'needs_review',active:false,productIds:['managed-qa'],notes:''}};
+  else if(p==='/api/mail/supplier-options')data={suppliers:[{id:'linked-supplier',company:'시험 제조사',email:supplierHasEmail?'supplier@example.test':'',phone:'02-0000-0000',companyEmail:'',active:false,classification:'candidate',reviewStatus:'needs_review',contacts:[{id:'staff-1',name:'견적 담당자',email:supplierHasEmail?'staff@example.test':'',phone:'02-1111-1111',mobile:'010-1111-1111'}]}],delivery:null,gmailEmail:'sender@example.test',product:record().product,qty:1,requestStage:stage,cancelled:false};
   else if(p==='/api/member/admin/overview')data={counts:{total:1,cancelled:0,received:stage===0?1:0,supplier:stage===1?1:0,preparing:0,published:0},recent:[record()],pending:[record()]};
   else if(p==='/api/member/admin/REQ-real-1'&&req.method()==='POST'){stage=req.postDataJSON().stage;data={ok:true};}
   else if(p==='/api/member/admin/REQ-real-1')data={request:record(),quote:null,events:[{title:'견적 요청 접수',at:'2026-10-16T01:00:00Z'}],adminEvents:stage?[{operatorName:'운영자',action:'진행 상태: 공급업체 확인 중',at:'2026-10-16T02:00:00Z'}]:[]};
@@ -60,6 +62,17 @@ let browser;
  await page.locator('form[data-member-stage]').waitFor();
  await page.getByRole('button',{name:'제품 회사에 단가 문의'}).waitFor();
  await page.getByText('견적 담당자',{exact:true}).waitFor();
+ assert.equal(await page.locator('[data-cloud-supplier-send]').isDisabled(),true);
+ assert.equal(await page.locator('[data-cloud-supplier-reviewed]').isDisabled(),false);
+ assert.equal(await page.locator('[data-cloud-supplier-send]').evaluate(node=>getComputedStyle(node).backgroundColor),'rgb(229, 233, 240)');
+ await page.getByRole('link',{name:'회사 정보 수정'}).click();
+ await page.locator('#cloud-supplier-form [name="company"]').waitFor();
+ assert.equal(await page.locator('#cloud-supplier-form [name="company"]').inputValue(),'시험 제조사');
+ await page.getByRole('link',{name:'견적 요청으로 돌아가기'}).click();
+ await page.locator('form[data-member-stage]').waitFor();
+ supplierHasEmail=false;
+ await page.getByRole('button',{name:'새로고침'}).last().click();
+ await page.locator('[data-cloud-supplier-reviewed]:disabled').waitFor();
  assert.equal(await page.locator('[data-cloud-supplier-send]').isDisabled(),true);
  await page.locator('form[data-member-stage] select').selectOption('1');
  await page.locator('form[data-member-stage] button').click();

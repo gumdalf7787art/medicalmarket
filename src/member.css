@@ -11,3 +11,9 @@ body.is-member{background:#f4f6fa}body.is-member #medicalmarket-root>header,body
 .cloud-supplier-contacts{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}
 .cloud-supplier-contacts span{overflow-wrap:anywhere}
 @media(max-width:650px){.cloud-supplier-details{grid-template-columns:1fr}}
+.cloud-supplier-mail .cloud-supplier-review{display:flex;align-items:center;gap:10px;width:fit-content;padding:10px 14px;border:1px solid #d8e1ef;border-radius:8px;background:#f5f7fa;color:#52627b;cursor:pointer}
+.cloud-supplier-mail .cloud-supplier-review input{width:18px;height:18px;margin:0;accent-color:#2865d9}
+.cloud-supplier-mail .cloud-supplier-review:has(input:checked){border-color:#8ab3fa;background:#e8f1ff;color:#1858bf}
+.cloud-supplier-mail .cloud-supplier-review.is-unavailable{color:#9aa7ba;cursor:not-allowed}
+.cloud-supplier-mail .cloud-supplier-send{display:inline-block;min-width:220px;margin-top:4px;background:#2865d9;color:#fff;border-color:#2865d9;font-weight:700;cursor:pointer}
+.cloud-supplier-mail .cloud-supplier-send:disabled{background:#e5e9f0;color:#8793a5;border:1px solid #d7dee8;opacity:1;cursor:not-allowed}

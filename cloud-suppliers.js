@@ -1,4 +1,19 @@
 let cloudSupplierRows=null,cloudSupplierTotal=0,cloudSupplierPage=1,cloudSupplierQuery='',cloudSupplierEditing=null,cloudSupplierBusy=false,cloudSupplierError='',cloudSupplierImportStatus='';
+const cloudSupplierDirect=new Map(),cloudSupplierDirectLoading=new Set(),cloudSupplierDirectFailed=new Set();
+
+async function loadCloudSupplierDirect(id){
+  if(cloudSupplierDirectLoading.has(id))return;
+  cloudSupplierDirectLoading.add(id);
+  try{
+    const response=await fetch('/api/suppliers/'+encodeURIComponent(id),{credentials:'same-origin',cache:'no-store'});
+    const data=await response.json();
+    if(!response.ok)throw Error(data.error||'공급업체 정보를 불러오지 못했습니다.');
+    cloudSupplierDirect.set(id,data.supplier);
+    cloudSupplierDirectFailed.delete(id);
+    cloudSupplierError='';
+  }catch(error){cloudSupplierDirectFailed.add(id);cloudSupplierError=error.message;}
+  finally{cloudSupplierDirectLoading.delete(id);if(location.hash.startsWith('#ops/suppliers?'))render();}
+}
 
 async function loadCloudSuppliers(){
   if(cloudSupplierBusy)return;
@@ -45,17 +60,20 @@ function cloudSupplierForm(row){
     </form><p class="admin-footnote">연락처와 메모는 운영자만 조회합니다. 저장해도 메일은 발송되지 않습니다.</p></section>`;
 }
 
-function cloudSupplierManagement(){
+function cloudSupplierManagement(page='suppliers'){
+  const params=new URLSearchParams(page.includes('?')?page.slice(page.indexOf('?')+1):''),directId=params.get('edit')||'',returnId=params.get('return')||'';
+  if(directId&&!cloudSupplierDirect.has(directId)&&!cloudSupplierDirectLoading.has(directId)&&!cloudSupplierDirectFailed.has(directId))queueMicrotask(()=>loadCloudSupplierDirect(directId));
   if(!cloudSupplierRows&&!cloudSupplierBusy)queueMicrotask(loadCloudSuppliers);
   const rows=cloudSupplierRows||[];
-  const editing=cloudSupplierEditing==='new'?null:rows.find(row=>row.id===cloudSupplierEditing);
+  const editing=directId?cloudSupplierDirect.get(directId):cloudSupplierEditing==='new'?null:rows.find(row=>row.id===cloudSupplierEditing);
   return `${adminHeading('공급업체 관리','업체·복수 담당자·취급 제품을 운영자 전용 D1에 저장합니다.')}
+    ${returnId?`<p><a class="member-back" data-cloud-supplier-return href="#ops/requests?id=${encodeURIComponent(returnId)}">← 견적 요청으로 돌아가기</a></p>`:''}
     <div class="actions"><button type="button" data-cloud-supplier-new>업체 등록</button><button type="button" data-cloud-supplier-refresh>새로고침</button></div>
+    ${cloudSupplierError?`<p class="notice warn" role="alert">${e(cloudSupplierError)}</p>`:''}
+    ${directId?editing?cloudSupplierForm(editing):cloudSupplierDirectFailed.has(directId)?`<button type="button" data-cloud-supplier-direct-retry="${e(directId)}">회사 정보 다시 불러오기</button>`:'<section class="admin-panel"><p role="status">해당 회사 정보를 불러오고 있습니다.</p></section>':cloudSupplierEditing?cloudSupplierForm(editing):''}
     <section class="admin-panel"><h2>기존 공급업체 자료 이관</h2><p>로컬 통합 목록 JSON을 선택하면 기존 업체와 확인이 필요한 후보를 구분해 비공개 D1에 저장합니다. 동일 원본은 다시 올려도 중복 등록되지 않습니다.</p>
       <label>로컬 공급업체 통합 목록 JSON<input id="cloud-supplier-import-file" type="file" accept=".json,application/json" ${cloudSupplierBusy?'disabled':''}></label>
       <p id="supplier-import-progress" role="status">${e(cloudSupplierImportStatus)}</p><p class="admin-footnote">이관 자료는 공개 GitHub·R2에 저장되지 않습니다. 모든 기존 연락처는 확인 전 상태로 등록되며 메일은 발송되지 않습니다.</p></section>
-    ${cloudSupplierError?`<p class="notice warn" role="alert">${e(cloudSupplierError)}</p>`:''}
-    ${cloudSupplierEditing?cloudSupplierForm(editing):''}
     <section class="admin-panel"><form id="cloud-supplier-search" class="admin-search"><label>업체 검색<input name="query" value="${e(cloudSupplierQuery)}" placeholder="업체명·기본 이메일"></label><button>검색</button></form>
       <div class="admin-panel-title"><h2>등록된 공급업체 <b>${cloudSupplierTotal}</b></h2><span>20개씩 표시</span></div>
       ${cloudSupplierRows===null?'<p>공급업체 정보를 불러오는 중입니다.</p>':rows.length?`<div class="table-wrap"><table class="admin-table"><thead><tr><th>업체명</th><th>구분·확인</th><th>기본 이메일</th><th>담당자</th><th>취급 제품</th><th>상태</th><th></th></tr></thead><tbody>${rows.map(row=>`<tr><td><strong>${e(row.company)}</strong></td><td>${supplierClassLabel(row.classification)} · ${row.reviewStatus==='confirmed'?'확인 완료':'확인 필요'}</td><td>${e(row.email||'미등록')}</td><td>${row.contacts?.length||0}명</td><td>${row.productIds.length}개</td><td>${row.active?'사용 중':'중지'}</td><td><button type="button" data-cloud-supplier-edit="${e(row.id)}">수정</button></td></tr>`).join('')}</tbody></table></div>`:'<p>등록된 공급업체가 없습니다.</p>'}
@@ -118,15 +136,19 @@ document.addEventListener('submit',async event=>{
   try{
     const response=await fetch('/api/suppliers'+(id?'/'+encodeURIComponent(id):''),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const result=await response.json();if(!response.ok)throw Error(result.error||'저장하지 못했습니다.');
-    cloudSupplierEditing=null;cloudSupplierRows=null;toast('공급업체 정보를 저장했습니다.');
+    cloudSupplierEditing=null;cloudSupplierRows=null;cloudSupplierDirect.delete(id);cloudSupplierMailCache.clear();toast('공급업체 정보를 저장했습니다.');
+    const route=new URLSearchParams(location.hash.split('?')[1]||''),returnId=route.get('return');
+    if(returnId){location.hash='#ops/requests?id='+encodeURIComponent(returnId);return;}
   }catch(error){cloudSupplierError=error.message;toast(error.message);}
   finally{cloudSupplierBusy=false;render();}
 });
 
 document.addEventListener('click',event=>{
+  if(event.target.closest('[data-cloud-supplier-return]'))cloudSupplierMailCache.clear();
   const button=event.target.closest('button');if(!button)return;
+  if(button.dataset.cloudSupplierDirectRetry){cloudSupplierDirectFailed.delete(button.dataset.cloudSupplierDirectRetry);cloudSupplierError='';render();return;}
   if(button.hasAttribute('data-cloud-supplier-new')){cloudSupplierEditing='new';render();}
-  if(button.hasAttribute('data-cloud-supplier-cancel')){cloudSupplierEditing=null;render();}
+  if(button.hasAttribute('data-cloud-supplier-cancel')){const params=new URLSearchParams(location.hash.split('?')[1]||''),returnId=params.get('return');if(returnId){cloudSupplierMailCache.clear();location.hash='#ops/requests?id='+encodeURIComponent(returnId);}else if(params.has('edit'))location.hash='#ops/suppliers';else{cloudSupplierEditing=null;render();}}
   if(button.dataset.cloudSupplierEdit){cloudSupplierEditing=button.dataset.cloudSupplierEdit;render();}
   if(button.hasAttribute('data-cloud-supplier-refresh')){cloudSupplierRows=null;render();}
   if(button.dataset.cloudSupplierPage){cloudSupplierPage+=button.dataset.cloudSupplierPage==='next'?1:-1;cloudSupplierRows=null;render();}
