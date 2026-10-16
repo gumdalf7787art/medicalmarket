@@ -25,7 +25,7 @@ function publicRequest(row){return {...JSON.parse(row.payload),id:row.id,stage:r
 const supplierReplyUnreadSql="(SELECT COUNT(*) FROM mm_supplier_replies sr LEFT JOIN mm_supplier_reply_seen ss ON ss.gmail_id=sr.gmail_id WHERE sr.request_id=r.id AND ss.gmail_id IS NULL) AS supplier_reply_unread";
 export async function memberAction({request,env,params}){
  const path=Array.isArray(params.path)?params.path: String(params.path||'').split('/');const [action,id]=path;
- const admin=action==='admin';let user;
+ const admin=action==='admin'||action==='admin-pdf';let user;
  if(admin){await requireAdmin(request,env);user=await currentUser(request,env);}else user=await userRequired(request,env);
  await memberSchema(env);
  const url=new URL(request.url);const at=stamp();
@@ -42,7 +42,7 @@ export async function memberAction({request,env,params}){
    const counts=await env.DB.prepare('SELECT COUNT(*) AS total,COALESCE(SUM(CASE WHEN r.stage<3 AND r.cancelled=0 THEN 1 ELSE 0 END),0) AS active,COUNT(q.request_id) AS quotes,COALESCE(SUM(CASE WHEN q.request_id IS NOT NULL AND q.viewed_at IS NULL THEN 1 ELSE 0 END),0) AS unread FROM mm_requests r LEFT JOIN mm_customer_quotes q ON q.request_id=r.id WHERE r.user_id=?').bind(user.id).first();
    return json({profile:p?JSON.parse(p.payload):null,favorites:f.results.map(x=>x.product_id),counts});
   }
-  if(action==='requests'&&!id||admin&&!id){
+  if(action==='requests'&&!id||action==='admin'&&!id){
    const page=Math.max(1,Math.min(10000,Math.floor(Number(url.searchParams.get('page')))||1));const search=text(url.searchParams.get('q'),100);const stage=url.searchParams.get('stage');const quotes=url.searchParams.get('quotes')==='1';
    let where=admin?'1=1':'r.user_id=?',args=admin?[]:[user.id];
    if(search){where+=" AND (r.id LIKE ? OR json_extract(r.payload,'$.product.name') LIKE ? OR json_extract(r.payload,'$.profile.hospital') LIKE ?)";args.push('%'+search+'%','%'+search+'%','%'+search+'%');}
@@ -54,7 +54,7 @@ export async function memberAction({request,env,params}){
    const rows=await env.DB.prepare('SELECT r.*,q.issued_at,q.viewed_at'+(admin?','+supplierReplyUnreadSql:'')+join+' ORDER BY r.created_at DESC LIMIT 15 OFFSET ?').bind(...args,(page-1)*15).all();
    return json({requests:rows.results.map(publicRequest),total:count.total,page});
   }
-  if(action==='requests'&&id||admin&&id){
+  if(action==='requests'&&id||action==='admin'&&id){
    const row=await record(env,id,user,admin);const q=await env.DB.prepare('SELECT payload,issued_at,viewed_at FROM mm_customer_quotes WHERE request_id=?').bind(id).first();
    const events=await env.DB.prepare('SELECT title,at FROM mm_request_events WHERE request_id=? ORDER BY at').bind(id).all();
    if(q&&!admin)await env.DB.prepare('UPDATE mm_customer_quotes SET viewed_at=? WHERE request_id=? AND viewed_at IS NULL').bind(at,id).run();
@@ -62,7 +62,7 @@ export async function memberAction({request,env,params}){
    const supplierReplyUnread=admin?await env.DB.prepare('SELECT COUNT(*) AS count FROM mm_supplier_replies sr LEFT JOIN mm_supplier_reply_seen ss ON ss.gmail_id=sr.gmail_id WHERE sr.request_id=? AND ss.gmail_id IS NULL').bind(id).first():null;
    return json({request:publicRequest({...row,issued_at:q?.issued_at,viewed_at:q?.viewed_at,...(admin?{supplier_reply_unread:supplierReplyUnread.count}:{})}),quote:q?{...JSON.parse(q.payload),issuedAt:q.issued_at}:null,events:events.results,...(admin?{adminEvents:adminEvents.results}:{})});
   }
-  if(action==='pdf'&&id){await record(env,id,user);const q=await env.DB.prepare('SELECT pdf_key FROM mm_customer_quotes WHERE request_id=?').bind(id).first();if(!q||!env.PRIVATE_FILES)throw failure('견적서 파일을 찾을 수 없습니다.',404);const file=await env.PRIVATE_FILES.get(q.pdf_key);if(!file)throw failure('파일을 찾을 수 없습니다.',404);return new Response(file.body,{headers:{'Content-Type':'application/pdf','Content-Disposition':'attachment; filename="quote-'+id+'.pdf"','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});}
+  if((action==='pdf'||action==='admin-pdf')&&id){await record(env,id,user,admin);const q=await env.DB.prepare('SELECT pdf_key FROM mm_customer_quotes WHERE request_id=?').bind(id).first();if(!q||!env.PRIVATE_FILES)throw failure('견적서 파일을 찾을 수 없습니다.',404);const file=await env.PRIVATE_FILES.get(q.pdf_key);if(!file)throw failure('파일을 찾을 수 없습니다.',404);const disposition=admin&&url.searchParams.get('download')!=='1'?'inline':'attachment';return new Response(file.body,{headers:{'Content-Type':'application/pdf','Content-Disposition':disposition+'; filename="quote-'+id+'.pdf"','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});}
   throw failure('요청 경로를 확인해 주세요.',404);
  }
  if(request.method!=='POST')throw failure('지원하지 않는 요청입니다.',405);sameOrigin(request);
@@ -82,7 +82,7 @@ export async function memberAction({request,env,params}){
   await env.DB.batch([env.DB.prepare('INSERT INTO mm_requests VALUES (?,?,?,0,0,?,?)').bind(rid,user.id,JSON.stringify(snapshot),at,at),env.DB.prepare('INSERT INTO mm_member_profiles VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET payload=excluded.payload').bind(user.id,JSON.stringify(p)),event(env,rid,'견적 요청 접수',at)]);return json({id:rid},201);
  }
  if(action==='cancel'&&id){await record(env,id,user);const row=await env.DB.prepare('UPDATE mm_requests SET cancelled=1,updated_at=? WHERE id=? AND user_id=? AND stage=0 AND cancelled=0 RETURNING id').bind(at,id,user.id).first();if(!row)throw failure('접수 단계의 요청만 취소할 수 있습니다.',409);await event(env,id,'고객 요청 취소',at).run();return json({ok:true});}
- if(admin&&id){
+ if(action==='admin'&&id){
   const row=await record(env,id,null,true);if(row.cancelled)throw failure('취소된 요청입니다.',409);
   if(data.action==='draft'){
    const replies=await env.DB.prepare('SELECT subject,body FROM mm_supplier_replies WHERE request_id=? ORDER BY received_at DESC LIMIT 10').bind(id).all();

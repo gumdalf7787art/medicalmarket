@@ -44,9 +44,12 @@ test('quote preview data is private; final send registers PDF and sends one mock
  const original=globalThis.fetch;let sends=0,raw='';globalThis.fetch=async (url,options)=>{assert.match(String(url),/gmail.googleapis.com\/gmail\/v1\/users\/me\/messages\/send/);sends++;raw=options.body;return new Response(JSON.stringify({id:'gmail-sent-1'}),{status:200,headers:{'Content-Type':'application/json'}});};
  try{
   const sent=await invoke(member,'member','admin/'+id,{action:'publish-send',itemName:'초음파',model:'Q40',qty:2,unit:165000,supplierUnit:100000,supplierVatStatus:'exclusive',terms:'견적추가 사항',emailSubject:'견적 안내',emailMessage:'확인 부탁드립니다.',pdf,reviewed:true},oc);assert.equal(sent.status,200,await sent.text());
-  assert.equal(sends,1);const mime=atob(JSON.parse(raw).raw.replaceAll('-','+').replaceAll('_','/')+'='.repeat((4-JSON.parse(raw).raw.length%4)%4));assert.match(mime,/Content-Type: application\/pdf/);assert.match(mime,/buyer@example.test/);
+  assert.equal(sends,1);const mime=atob(JSON.parse(raw).raw.replaceAll('-','+').replaceAll('_','/')+'='.repeat((4-JSON.parse(raw).raw.length%4)%4));assert.match(mime,/Content-Type: application\/pdf/);assert.match(mime,/buyer@example.test/);assert.match(mime,new RegExp('From: =\\?UTF-8\\?B\\?'+Buffer.from('메디컬마켓').toString('base64')));
   const detail=await invoke(member,'member','requests/'+id,undefined,bc);const result=await detail.json();assert.equal(result.quote.total,330000);assert.equal(result.quote.unitIncludesVat,true);assert.equal(result.request.stage,3);
   const download=await invoke(member,'member','pdf/'+id,undefined,bc);assert.equal(download.status,200);
+  const adminPdf=await invoke(member,'member','admin-pdf/'+id,undefined,oc);assert.equal(adminPdf.status,200);assert.match(adminPdf.headers.get('content-disposition'),/^inline;/);assert.equal((await adminPdf.arrayBuffer()).byteLength,atob(pdf).length);
+  const adminDownload=await invoke(member,'member','admin-pdf/'+id+'?download=1',undefined,oc);assert.match(adminDownload.headers.get('content-disposition'),/^attachment;/);
+  const deniedPdf=await invoke(member,'member','admin-pdf/'+id,undefined,bc);assert.equal(deniedPdf.status,401);
   const again=await invoke(member,'member','admin/'+id,{action:'publish-send'},oc);assert.equal(again.status,200);assert.equal(sends,1);
  }finally{globalThis.fetch=original;db.close();}
 });
