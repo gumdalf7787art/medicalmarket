@@ -35,4 +35,16 @@ test('supplier contacts and product links are private D1 records',async()=>{
   assert.equal((await call(suppliers,record.id,{...draft,email:'bad'},operatorCookie)).status,400);
   assert.equal((await call(suppliers,record.id,{...draft,productIds:['missing']},operatorCookie)).status,409);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM mm_suppliers').get().n,1);
+  const productIds=Array.from({length:60},(_,i)=>'legacy-'+i);
+  for(const productId of productIds)db.prepare('INSERT INTO mm_products VALUES (?,?,1,0,1,?)').run(productId,JSON.stringify({name:'장비'}),new Date().toISOString());
+  const migrated={sourceKey:'legacy:original-1',classification:'candidate',reviewStatus:'needs_review',company:'제조사 후보',companyPhone:'02-1234-5678',companyEmail:'',
+    email:'',phone:'02-1234-5678',contacts:[{id:'staff-1',name:'담당자',phone:'02-1234-5678',mobile:'010-1234-5678',email:'staff@example.test',left:false,blocked:false}],productIds,active:false};
+  const imported=await call(suppliers,'import',migrated,operatorCookie);assert.equal(imported.status,201);
+  const importedId=(await imported.json()).id;
+  assert.equal((await (await call(suppliers,'import',migrated,operatorCookie)).json()).status,'skipped');
+  const importedRecord=(await (await call(suppliers,importedId,null,operatorCookie)).json()).supplier;
+  assert.equal(importedRecord.classification,'candidate');assert.equal(importedRecord.active,false);
+  assert.equal(importedRecord.contacts[0].mobile,'010-1234-5678');assert.equal(importedRecord.productIds.length,60);
+  assert.equal((await call(suppliers,importedId,{...migrated,active:true},operatorCookie)).status,400);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM mm_suppliers').get().n,2);
 });
