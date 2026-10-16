@@ -38,6 +38,7 @@ let browser;
   else if(p==='/api/suppliers')data={suppliers:supplier?[supplier]:[],total:supplier?1:0,page:1};
   else if(p==='/api/suppliers/linked-supplier')data={supplier:{id:'linked-supplier',company:'시험 제조사',companyPhone:'02-0000-0000',companyEmail:'',email:'supplier@example.test',phone:'02-0000-0000',contacts:[{id:'staff-1',name:'견적 담당자',email:'staff@example.test',phone:'02-1111-1111',mobile:'010-1111-1111'}],classification:'candidate',reviewStatus:'needs_review',active:false,productIds:['managed-qa'],notes:''}};
   else if(p==='/api/mail/supplier-options')data={suppliers:[{id:'linked-supplier',company:'시험 제조사',email:supplierHasEmail?'supplier@example.test':'',phone:'02-0000-0000',companyEmail:'',active:false,classification:'candidate',reviewStatus:'needs_review',contacts:[{id:'staff-1',name:'견적 담당자',email:supplierHasEmail?'staff@example.test':'',phone:'02-1111-1111',mobile:'010-1111-1111'}]}],delivery:null,gmailEmail:'sender@example.test',product:record().product,qty:1,requestStage:stage,cancelled:false};
+  else if(p==='/api/mail/supplier-preview'){const draft=req.postDataJSON().draft||{subject:'[㈜피지오컴퍼니] 실제 장비 공급 단가 문의',greeting:'안녕하세요.',introduction:'단가 문의',product:'실제 장비',model:'QA-100',quantity:'1대',hospital:'실제 병원',region:'서울특별시 강남구',request:'공급 단가를 알려주세요.'};data={draft,subject:draft.subject,html:`<p>${draft.request}</p>`,sender:'sender@example.test',recipient:'supplier@example.test',certificateReady:true,certificateName:'사업자등록증.jpg'};}
   else if(p==='/api/member/admin/overview')data={counts:{total:1,cancelled:0,received:stage===0?1:0,supplier:stage===1?1:0,preparing:0,published:0},recent:[record()],pending:[record()]};
   else if(p==='/api/member/admin/REQ-real-1'&&req.method()==='POST'){stage=req.postDataJSON().stage;data={ok:true};}
   else if(p==='/api/member/admin/REQ-real-1')data={request:record(),quote:null,events:[{title:'견적 요청 접수',at:'2026-10-16T01:00:00Z'}],adminEvents:stage?[{operatorName:'운영자',action:'진행 상태: 공급업체 확인 중',at:'2026-10-16T02:00:00Z'}]:[]};
@@ -68,6 +69,12 @@ let browser;
  await page.locator('[data-cloud-supplier-reviewed]').check();
  await page.waitForFunction(()=>!document.querySelector('[data-cloud-supplier-send]')?.disabled);
  assert.equal(await page.locator('[data-cloud-supplier-send]').isEnabled(),true);
+ await page.locator('[data-cloud-supplier-send]').click();
+ await page.getByRole('heading',{name:'공급업체 이메일 미리보기'}).waitFor();
+ await page.locator('[data-cloud-supplier-draft] [name="request"]').fill('수정한 공급 단가 문의');
+ await page.waitForFunction(()=>document.querySelector('.cloud-supplier-compose iframe')?.getAttribute('srcdoc')?.includes('수정한 공급 단가 문의'));
+ assert.equal(await page.locator('[data-cloud-supplier-final-send]').isEnabled(),true);
+ await page.locator('[data-cloud-supplier-close]').click();
  await page.getByRole('link',{name:'회사 정보 수정'}).click();
  await page.locator('#cloud-supplier-form [name="company"]').waitFor();
  assert.equal(await page.locator('#cloud-supplier-form [name="company"]').inputValue(),'시험 제조사');

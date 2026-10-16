@@ -10,7 +10,8 @@ import {seal} from '../server/gmail.js';
 test('request-linked supplier contact sends after per-request confirmation even while imported supplier is unreviewed',async()=>{
  const db=new DatabaseSync(':memory:');
  const DB={prepare(sql){let values=[];return {bind(...args){values=args;return this;},async first(){return db.prepare(sql).get(...values)||null;},async all(){return {results:db.prepare(sql).all(...values)};},async run(){return db.prepare(sql).run(...values);}};},async batch(statements){db.exec('BEGIN');try{const out=[];for(const item of statements)out.push(await item.run());db.exec('COMMIT');return out;}catch(error){db.exec('ROLLBACK');throw error;}}};
- const env={DB,GMAIL_CLIENT_ID:'test-id',GMAIL_CLIENT_SECRET:'test-secret'};let calls=0;
+ const privateFiles=new Map();
+ const env={DB,GMAIL_CLIENT_ID:'test-id',GMAIL_CLIENT_SECRET:'test-secret',PRIVATE_FILES:{async head(key){return privateFiles.has(key)?{size:privateFiles.get(key).length}:null;},async put(key,value){privateFiles.set(key,new Uint8Array(value));},async get(key){const bytes=privateFiles.get(key);return bytes?{async arrayBuffer(){return bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength);}}:null;}}};let calls=0;
  const invoke=(handler,kind,path,data,cookie='')=>handler({env,params:{path:path.split('?')[0].split('/').filter(Boolean)},request:new Request('https://example.test/api/'+kind+'/'+path,{method:data===undefined?'GET':'POST',headers:{Origin:'https://example.test',Cookie:cookie,'CF-Connecting-IP':String(++calls)},...(data===undefined?{}:{body:JSON.stringify(data)})})});
  const session=response=>response.headers.get('set-cookie').split(';')[0];
  const buyer=await invoke(auth,'auth','signup',{email:'buyer@example.test',name:'구매자',password:'Only-for-test-123!',consent:true});
@@ -34,10 +35,20 @@ test('request-linked supplier contact sends after per-request confirmation even 
  const reviewedSend={...send,reviewed:true};
  assert.equal((await invoke(mail,'mail','supplier-send',reviewedSend,operatorCookie)).status,409);
  db.prepare('INSERT INTO mm_gmail_connection VALUES (1,?,?,?)').run('sender@example.test',await seal(env,{access_token:'test-access',refresh_token:'test-refresh',expires:Date.now()+3600000}),new Date().toISOString());
+ const preview=(await (await invoke(mail,'mail','supplier-preview',{requestId,supplierId,contactId:'contact-1'},operatorCookie)).json());
+ assert.match(preview.html,/병원명/);assert.match(preview.html,/시험 의원/);assert.match(preview.html,/관리번호/);assert.match(preview.html,/내부 관리용/);assert.match(preview.html,/736-81-01238/);
+ assert.ok(!preview.subject.includes(requestId));assert.ok(!preview.subject.includes('메디컬마켓'));
+ assert.equal(preview.certificateReady,false);
+ const certificate=new Uint8Array(256);certificate[0]=0xff;certificate[1]=0xd8;certificate[254]=0xff;certificate[255]=0xd9;
+ const upload=await mail({env,params:{path:['supplier-certificate']},request:new Request('https://example.test/api/mail/supplier-certificate',{method:'POST',headers:{Origin:'https://example.test',Cookie:operatorCookie,'CF-Connecting-IP':'upload-ip'},body:certificate})});assert.equal(upload.status,200);
+ assert.equal(privateFiles.size,1);
+ const edited={...preview.draft,subject:'[㈜피지오컴퍼니] 수정한 제목',request:'수정한 요청 문구입니다.\n단가를 회신해 주세요.',hospital:'수정 병원'};
+ const editedPreview=(await (await invoke(mail,'mail','supplier-preview',{requestId,supplierId,contactId:'contact-1',draft:edited},operatorCookie)).json());
+ assert.equal(editedPreview.certificateReady,true);assert.match(editedPreview.html,/수정 병원/);assert.match(editedPreview.html,/수정한 요청 문구/);
  const originalFetch=globalThis.fetch;let sent=0;
- globalThis.fetch=async(url,options)=>{assert.match(String(url),/gmail\/v1\/users\/me\/messages\/send$/);assert.equal(options.headers.Authorization,'Bearer test-access');const raw=JSON.parse(options.body).raw,decoded=atob(raw.replaceAll('-','+').replaceAll('_','/')+'='.repeat((4-raw.length%4)%4));assert.match(decoded,/To: supplier@example.test/);assert.ok(!decoded.includes('buyer@example.test'));sent++;return Response.json({id:'gmail-123'});};
+ globalThis.fetch=async(url,options)=>{assert.match(String(url),/gmail\/v1\/users\/me\/messages\/send$/);assert.equal(options.headers.Authorization,'Bearer test-access');const raw=JSON.parse(options.body).raw,decoded=atob(raw.replaceAll('-','+').replaceAll('_','/')+'='.repeat((4-raw.length%4)%4));assert.match(decoded,/To: supplier@example.test/);assert.match(decoded,/multipart\/mixed/);assert.match(decoded,/filename\*=UTF-8''/);assert.ok(decoded.includes('Content-Type: text/html'));assert.ok(!decoded.includes('buyer@example.test'));const htmlPart=decoded.match(/Content-Type: text\/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n([\s\S]*?)\r\n--mm-/)?.[1].replace(/\s/g,'');assert.ok(htmlPart);const html=new TextDecoder().decode(Uint8Array.from(atob(htmlPart),c=>c.charCodeAt(0)));assert.match(html,/수정 병원/);assert.match(html,/수정한 요청 문구/);sent++;return Response.json({id:'gmail-123'});};
  try{
-  const result=await invoke(mail,'mail','supplier-send',reviewedSend,operatorCookie);assert.equal(result.status,200);assert.equal((await result.json()).status,'sent');assert.equal(sent,1);
+  const result=await invoke(mail,'mail','supplier-send',{...reviewedSend,draft:edited},operatorCookie);assert.equal(result.status,200);assert.equal((await result.json()).status,'sent');assert.equal(sent,1);
   assert.equal((await invoke(mail,'mail','supplier-send',reviewedSend,operatorCookie)).status,409);assert.equal(sent,1);
   const latest=(await (await invoke(mail,'mail',optionsPath,undefined,operatorCookie)).json());assert.equal(latest.delivery.status,'sent');assert.equal(latest.requestStage,1);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM mm_supplier_mail').get().n,1);

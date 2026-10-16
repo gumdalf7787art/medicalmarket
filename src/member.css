@@ -17,3 +17,18 @@ body.is-member{background:#f4f6fa}body.is-member #medicalmarket-root>header,body
 .cloud-supplier-mail .cloud-supplier-review.is-unavailable{color:#9aa7ba;cursor:not-allowed}
 .cloud-supplier-mail .cloud-supplier-send{display:inline-block;min-width:220px;margin-top:4px;background:#2865d9;color:#fff;border-color:#2865d9;font-weight:700;cursor:pointer}
 .cloud-supplier-mail .cloud-supplier-send:disabled{background:#e5e9f0;color:#8793a5;border:1px solid #d7dee8;opacity:1;cursor:not-allowed}
+.cloud-supplier-compose{margin-top:26px;padding:22px;border:1px solid #b9cdec;border-radius:12px;background:#f8fbff}
+.cloud-supplier-compose>.section-head p{font-size:13px;color:#69809d}
+.cloud-supplier-compose-grid{display:grid;grid-template-columns:minmax(270px,.85fr) minmax(330px,1.15fr);gap:20px;align-items:start}
+.cloud-supplier-compose-grid form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px}
+.cloud-supplier-compose-grid label{font-size:12px;margin:0;min-width:0}
+.cloud-supplier-compose-grid label:first-child,.cloud-supplier-compose-grid label:nth-child(3),.cloud-supplier-compose-grid label:last-child{grid-column:1/-1}
+.cloud-supplier-compose-grid input,.cloud-supplier-compose-grid textarea{display:block;box-sizing:border-box;width:100%;margin-top:6px;padding:10px;border:1px solid #d5dfed;border-radius:7px;font:inherit;color:#24324b;background:#fff}
+.cloud-supplier-compose-grid textarea{min-height:110px;resize:vertical}
+.cloud-supplier-compose-grid iframe{display:block;width:100%;height:660px;margin-top:8px;border:1px solid #d5dfed;border-radius:8px;background:#fff}
+.cloud-supplier-attachment{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin:20px 0;font-size:13px}
+.cloud-supplier-attachment label{margin:0;font-size:12px}
+.cloud-supplier-attachment input{display:block;margin-top:5px}
+.cloud-supplier-final-send{background:#2865d9!important;color:#fff!important;border-color:#2865d9!important;font-weight:700!important}
+.cloud-supplier-final-send:disabled{background:#e5e9f0!important;color:#8793a5!important;border-color:#d7dee8!important}
+@media(max-width:950px){.cloud-supplier-compose-grid{grid-template-columns:1fr}}
