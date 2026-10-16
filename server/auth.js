@@ -19,12 +19,13 @@ export async function authSchema(env){
   env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_legacy_members(email TEXT PRIMARY KEY,name TEXT NOT NULL,claimed_by TEXT,imported_at TEXT NOT NULL)'),
   env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_legacy_credentials(email TEXT PRIMARY KEY,password_hash TEXT NOT NULL,imported_at TEXT NOT NULL)'),
   env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_social_contacts(user_id TEXT NOT NULL,provider TEXT NOT NULL,email TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(user_id,provider))')
+  ,env.DB.prepare("CREATE TABLE IF NOT EXISTS mm_role_owners(singleton TEXT PRIMARY KEY CHECK(singleton='owner'),user_id TEXT NOT NULL,created_at TEXT NOT NULL)")
  ]);
 }
-export function publicUser(user,env){if(!user)return null;return {id:user.id,email:user.email||'',socialEmail:user.socialEmail||'',displayEmail:user.email||user.socialEmail||'',name:user.name,role:user.role,legacyName:user.legacyName||'',owner:user.role==='admin'&&!!env.OWNER_USER_ID&&user.id===env.OWNER_USER_ID};}
+export function publicUser(user,env){if(!user)return null;const owner=user.role==='admin'&&(env.OWNER_USER_ID?user.id===env.OWNER_USER_ID:user.recordedOwnerId?user.id===user.recordedOwnerId:Number(user.adminCount)===1);return {id:user.id,email:user.email||'',socialEmail:user.socialEmail||'',displayEmail:user.email||user.socialEmail||'',name:user.name,role:user.role,legacyName:user.legacyName||'',owner};}
 export async function currentUser(request,env){
  const token=readCookie(request,'mm_session');if(!/^[a-f0-9]{64}$/.test(token))return null;await authSchema(env);
- return env.DB.prepare('SELECT u.*,l.name AS legacyName,(SELECT email FROM mm_social_contacts c WHERE c.user_id=u.id ORDER BY updated_at DESC LIMIT 1) AS socialEmail FROM mm_sessions s JOIN mm_users u ON u.id=s.user_id LEFT JOIN mm_legacy_members l ON l.claimed_by=u.id WHERE s.hash=? AND s.expires>? AND u.disabled=0').bind(await digest(token),Date.now()).first();
+ return env.DB.prepare("SELECT u.*,l.name AS legacyName,(SELECT email FROM mm_social_contacts c WHERE c.user_id=u.id ORDER BY updated_at DESC LIMIT 1) AS socialEmail,(SELECT user_id FROM mm_role_owners WHERE singleton='owner') AS recordedOwnerId,(SELECT COUNT(*) FROM mm_users WHERE role='admin' AND disabled=0) AS adminCount FROM mm_sessions s JOIN mm_users u ON u.id=s.user_id LEFT JOIN mm_legacy_members l ON l.claimed_by=u.id WHERE s.hash=? AND s.expires>? AND u.disabled=0").bind(await digest(token),Date.now()).first();
 }
 export async function userRequired(request,env){const user=await currentUser(request,env);if(!user)throw failure('로그인이 필요합니다.',401);return user;}
 export async function limit(request,env,scope,max=8){
@@ -48,7 +49,7 @@ export async function verifyLegacyPassword(password,hash){
  const actual=new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:enc.encode(salt),iterations:Number(iterations)},key,expected.length*8));
  return actual.reduce((diff,byte,index)=>diff|(byte^expected[index]),0)===0;
 }
-export async function sessionResponse(user,env){const token=random();await env.DB.prepare('DELETE FROM mm_sessions WHERE expires<?').bind(Date.now()).run();await env.DB.prepare('INSERT INTO mm_sessions(hash,user_id,expires) VALUES (?,?,?)').bind(await digest(token),user.id,Date.now()+86400000).run();return json({user:publicUser(user,env)},200,{'Set-Cookie':cookie('mm_session',token,86400)});}
+export async function sessionResponse(user,env){const token=random();await env.DB.prepare('DELETE FROM mm_sessions WHERE expires<?').bind(Date.now()).run();await env.DB.prepare('INSERT INTO mm_sessions(hash,user_id,expires) VALUES (?,?,?)').bind(await digest(token),user.id,Date.now()+86400000).run();const owner=await env.DB.prepare("SELECT (SELECT user_id FROM mm_role_owners WHERE singleton='owner') AS recordedOwnerId,(SELECT COUNT(*) FROM mm_users WHERE role='admin' AND disabled=0) AS adminCount").first();return json({user:publicUser({...user,...owner},env)},200,{'Set-Cookie':cookie('mm_session',token,86400)});}
 export async function putToken(env,kind,payload,minutes=30){const token=random();await env.DB.prepare('DELETE FROM mm_auth_tokens WHERE expires<?').bind(Date.now()).run();await env.DB.prepare('INSERT INTO mm_auth_tokens(hash,kind,payload,expires) VALUES (?,?,?,?)').bind(await digest(token),kind,JSON.stringify(payload),Date.now()+minutes*60000).run();return token;}
 export async function takeToken(env,token,kind){if(!/^[a-f0-9]{64}$/.test(token||''))throw failure('유효하지 않은 인증 요청입니다.');const row=await env.DB.prepare('DELETE FROM mm_auth_tokens WHERE hash=? AND kind=? AND expires>? RETURNING payload').bind(await digest(token),kind,Date.now()).first();if(!row)throw failure('인증 시간이 지났거나 이미 사용한 링크입니다. 다시 요청해 주세요.');return JSON.parse(row.payload);}
 export function siteOrigin(request,env){const origin=env.SITE_URL?new URL(env.SITE_URL).origin:new URL(request.url).origin;if(!origin.startsWith('https://')&&!origin.startsWith('http://127.0.0.1:'))throw failure('SITE_URL 설정을 확인해 주세요.',503);return origin;}
@@ -163,8 +164,17 @@ export async function authAction({request,env,params}){
  if(path==='role'){
   const actor=await userRequired(request,env);if(!publicUser(actor,env).owner)throw failure('최초 운영자 본인만 권한을 변경할 수 있습니다.',403);
   if(!['user','admin'].includes(data.role)||data.id===actor.id)throw failure('변경할 계정과 권한을 확인해 주세요.');
-  const target=await env.DB.prepare('SELECT id FROM mm_users WHERE id=? AND disabled=0').bind(String(data.id)).first();if(!target)throw failure('이용 가능한 회원만 지정할 수 있습니다.');
-  await env.DB.batch([env.DB.prepare('UPDATE mm_users SET role=? WHERE id=?').bind(data.role,target.id),env.DB.prepare('DELETE FROM mm_sessions WHERE user_id=?').bind(target.id),env.DB.prepare('INSERT INTO mm_auth_audit VALUES (?,?,?,?,?)').bind(crypto.randomUUID(),actor.id,target.id,'role:'+data.role,new Date().toISOString())]);return json({ok:true});
+  const target=await env.DB.prepare('SELECT id,role FROM mm_users WHERE id=? AND disabled=0').bind(String(data.id)).first();if(!target)throw failure('이용 가능한 회원만 지정할 수 있습니다.');
+  if(target.role===data.role)return json({ok:true});
+  const at=new Date().toISOString(),audit=crypto.randomUUID();
+  await env.DB.batch([
+   env.DB.prepare("INSERT INTO mm_role_owners(singleton,user_id,created_at) SELECT 'owner',?,? WHERE NOT EXISTS (SELECT 1 FROM mm_role_owners) AND (SELECT COUNT(*) FROM mm_users WHERE role='admin' AND disabled=0)=1 AND EXISTS (SELECT 1 FROM mm_users WHERE id=? AND role='admin' AND disabled=0) ON CONFLICT(singleton) DO NOTHING").bind(actor.id,at,actor.id),
+   env.DB.prepare(env.OWNER_USER_ID?'UPDATE mm_users SET role=? WHERE id=? AND disabled=0 AND role<>?':'UPDATE mm_users SET role=? WHERE id=? AND disabled=0 AND role<>? AND EXISTS (SELECT 1 FROM mm_role_owners WHERE user_id=?)').bind(...(env.OWNER_USER_ID?[data.role,target.id,data.role]:[data.role,target.id,data.role,actor.id])),
+   env.DB.prepare("INSERT INTO mm_auth_audit(id,actor,target,action,at) SELECT ?,?,?,?,? WHERE changes()=1").bind(audit,actor.id,target.id,'role:'+data.role,at),
+   env.DB.prepare('DELETE FROM mm_sessions WHERE user_id=? AND EXISTS (SELECT 1 FROM mm_auth_audit WHERE id=?)').bind(target.id,audit)
+  ]);
+  if(!await env.DB.prepare('SELECT id FROM mm_auth_audit WHERE id=?').bind(audit).first())throw failure('권한 변경 상태가 달라졌습니다. 다시 시도해 주세요.',409);
+  return json({ok:true});
  }
  if(path==='legacy-import'){
   const actor=await currentUser(request,env);if(!(publicUser(actor,env)?.owner||(!env.OWNER_USER_ID&&!actor&&await authenticated(request,env))))throw failure('최초 운영자 또는 기존 운영자 연결이 필요합니다.',403);

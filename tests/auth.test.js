@@ -152,5 +152,12 @@ test('email ownership, authorization, reset and OAuth identity isolation',async(
  assert.equal((await call('role',{id:user.id,role:'user'},ownerCookie)).status,200);
  assert.equal((await (await call('session',null,adminCookie)).json()).user,null,'demotion invalidates old sessions');
  assert.equal((await call('login',{email:'user@example.test',password:'Changed-test-password123!'})).status,200);
+ db.prepare("UPDATE mm_users SET role='user' WHERE id<>?").run(owner.id);
+ delete env.OWNER_USER_ID;
+ assert.equal((await (await call('session',null,ownerCookie)).json()).user.owner,true,'sole admin becomes first owner');
+ assert.equal((await call('role',{id:user.id,role:'admin'},ownerCookie)).status,200);
+ assert.equal((await (await call('session',null,ownerCookie)).json()).user.owner,true,'first owner remains after adding admins');
+ assert.equal(db.prepare("SELECT user_id FROM mm_role_owners WHERE singleton='owner'").get().user_id,owner.id);
+ env.OWNER_USER_ID=ownerId;
  globalThis.fetch=originalFetch;
 });
