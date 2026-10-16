@@ -44,9 +44,9 @@ async function supplierSend(request,env,input){
  const requestId=String(input.requestId||''),supplierId=String(input.supplierId||''),contactId=String(input.contactId||'');
  const row=await supplierRequest(env,requestId);
  if(row.cancelled||row.stage!==0)throw failure('접수 단계의 요청만 업체에 보낼 수 있습니다.',409);
+ if(input.reviewed!==true)throw failure('업체·수신 이메일·제품·수량을 확인해 주세요.',409);
  const options=await supplierOptions(env,requestId),supplier=options.suppliers.find(s=>s.id===supplierId);
  if(!supplier)throw failure('이 제품과 연결된 공급업체를 선택해 주세요.',409);
- if(!supplier.active||(supplier.classification!=='manual'&&supplier.reviewStatus!=='confirmed'))throw failure('업체 연락처를 확인하고 사용 상태로 변경한 뒤 보내 주세요.',409);
  const contact=contactId?supplier.contacts.find(c=>c.id===contactId&&!c.left&&!c.blocked):null;
  if(contactId&&!contact)throw failure('현재 사용할 수 있는 담당자를 선택해 주세요.',409);
  const to=contact?contact.email:(supplier.companyEmail||supplier.email);
