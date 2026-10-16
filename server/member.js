@@ -1,5 +1,6 @@
 import {json,failure,bodyJson,sameOrigin,requireAdmin} from './cloud.js';
 import {userRequired,currentUser,limit,emailValue} from './auth.js';
+import {quoteFromSources,normalizeCustomerQuote,customerEmailSubject,renderCustomerQuoteEmail,sendCustomerQuoteEmail} from './customer-quote.js';
 const stamp=()=>new Date().toISOString();
 const text=(v,max=1000)=>String(v||'').trim().slice(0,max);
 export async function memberSchema(env){await env.DB.batch([
@@ -9,6 +10,7 @@ export async function memberSchema(env){await env.DB.batch([
  env.DB.prepare('CREATE INDEX IF NOT EXISTS mm_requests_owner ON mm_requests(user_id,created_at)'),
  env.DB.prepare('CREATE INDEX IF NOT EXISTS mm_requests_workflow ON mm_requests(cancelled,stage,created_at)'),
  env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_customer_quotes(request_id TEXT PRIMARY KEY,payload TEXT NOT NULL,pdf_key TEXT NOT NULL,issued_at TEXT NOT NULL,viewed_at TEXT)'),
+ env.DB.prepare("CREATE TABLE IF NOT EXISTS mm_customer_quote_deliveries(request_id TEXT PRIMARY KEY,status TEXT NOT NULL,gmail_id TEXT NOT NULL DEFAULT '',pdf_key TEXT NOT NULL,payload TEXT NOT NULL,sent_at TEXT,updated_at TEXT NOT NULL)"),
  env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_request_events(id TEXT PRIMARY KEY,request_id TEXT NOT NULL,title TEXT NOT NULL,at TEXT NOT NULL)'),
  env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_request_admin_events(id TEXT PRIMARY KEY,request_id TEXT NOT NULL,operator_id TEXT,operator_name TEXT NOT NULL,action TEXT NOT NULL,at TEXT NOT NULL)'),
  env.DB.prepare('CREATE INDEX IF NOT EXISTS mm_request_admin_events_request ON mm_request_admin_events(request_id,at)'),
@@ -82,7 +84,51 @@ export async function memberAction({request,env,params}){
  if(action==='cancel'&&id){await record(env,id,user);const row=await env.DB.prepare('UPDATE mm_requests SET cancelled=1,updated_at=? WHERE id=? AND user_id=? AND stage=0 AND cancelled=0 RETURNING id').bind(at,id,user.id).first();if(!row)throw failure('접수 단계의 요청만 취소할 수 있습니다.',409);await event(env,id,'고객 요청 취소',at).run();return json({ok:true});}
  if(admin&&id){
   const row=await record(env,id,null,true);if(row.cancelled)throw failure('취소된 요청입니다.',409);
+  if(data.action==='draft'){
+   const replies=await env.DB.prepare('SELECT subject,body FROM mm_supplier_replies WHERE request_id=? ORDER BY received_at DESC LIMIT 10').bind(id).all();
+   const attachments=Array.isArray(data.attachments)?data.attachments.slice(0,20).map(x=>({name:text(x.name,180),text:text(x.text,100000),error:text(x.error,200)})):[];
+   return json(quoteFromSources(JSON.parse(row.payload),replies.results,attachments));
+  }
   if(data.action==='stage'){if(![0,1,2].includes(data.stage)||data.stage<row.stage)throw failure('진행 단계는 앞으로만 변경할 수 있습니다.');const updated=await env.DB.prepare('UPDATE mm_requests SET stage=?,updated_at=? WHERE id=? AND stage<=? AND cancelled=0 RETURNING id').bind(data.stage,at,id,data.stage).first();if(!updated)throw failure('요청 상태가 변경되었습니다.',409);const title=['요청 접수','공급업체 확인 중','견적 작성 중'][data.stage];await env.DB.batch([event(env,id,title,at),adminEvent(env,id,user,'진행 상태: '+title,at)]);return json({ok:true});}
+  if(data.action==='publish-send'){
+   const existing=await env.DB.prepare('SELECT status,gmail_id,pdf_key,payload,sent_at FROM mm_customer_quote_deliveries WHERE request_id=?').bind(id).first();
+   const saved=await env.DB.prepare('SELECT request_id FROM mm_customer_quotes WHERE request_id=?').bind(id).first();
+   if(saved)return json({ok:true,alreadySent:!!existing?.gmail_id});
+   if(existing&&existing.status!=='sent'&&existing.status!=='failed')throw failure('고객 메일 발송 결과를 확인 중입니다. 중복 발송을 피하려면 Gmail 보낸메일함을 먼저 확인해 주세요.',409);
+   const requestData=JSON.parse(row.payload);
+   const finalize=async delivery=>{const issuedAt=delivery.sent_at||new Date().toISOString();await env.DB.batch([
+    env.DB.prepare('INSERT OR IGNORE INTO mm_customer_quotes VALUES (?,?,?,?,NULL)').bind(id,delivery.payload,delivery.pdf_key,issuedAt),
+    env.DB.prepare('UPDATE mm_requests SET stage=3,updated_at=? WHERE id=? AND cancelled=0').bind(issuedAt,id),
+    event(env,id,'고객 견적서 등록 및 이메일 발송',issuedAt),adminEvent(env,id,user,'고객 견적서 등록 및 이메일 발송',issuedAt)
+   ]);return json({ok:true,recipient:requestData.profile.email,sentAt:issuedAt});};
+   if(existing?.status==='sent')return finalize(existing);
+   if(row.stage<2)throw failure('견적 작성 중 단계에서 등록해 주세요.',409);
+   if(!env.PRIVATE_FILES)throw failure('비공개 파일 저장소 연결이 필요합니다.',503);
+   if(data.reviewed!==true)throw failure('고객 제품 금액과 PDF 내용을 확인해 주세요.');
+   const quote=normalizeCustomerQuote(requestData,data),recipient=emailValue(requestData.profile.email);
+   const subject=text(data.emailSubject,160)||customerEmailSubject(requestData);
+   if(/[\r\n]/.test(subject))throw failure('이메일 제목을 확인해 주세요.');
+   const message=text(data.emailMessage,2000),html=renderCustomerQuoteEmail(requestData,quote,message);
+   let bytes;try{bytes=Uint8Array.from(atob(data.pdf||''),c=>c.charCodeAt(0));}catch{throw failure('PDF 파일을 확인해 주세요.');}
+   if(bytes.length<100||bytes.length>8000000||new TextDecoder().decode(bytes.slice(0,5))!=='%PDF-')throw failure('8MB 이하 PDF 견적서를 확인해 주세요.');
+   const key='customer-quotes/'+id+'/'+crypto.randomUUID()+'.pdf';await env.PRIVATE_FILES.put(key,bytes,{httpMetadata:{contentType:'application/pdf'}});
+   const payload=JSON.stringify(quote);
+   try{
+    if(existing?.status==='failed'){const claimed=await env.DB.prepare("UPDATE mm_customer_quote_deliveries SET status='sending',gmail_id='',pdf_key=?,payload=?,sent_at=NULL,updated_at=? WHERE request_id=? AND status='failed'").bind(key,payload,at,id).run();if((claimed.meta?.changes??claimed.changes??0)!==1)throw Error('claim lost');}
+    else await env.DB.prepare("INSERT INTO mm_customer_quote_deliveries(request_id,status,pdf_key,payload,updated_at) VALUES (?,'sending',?,?,?)").bind(id,key,payload,at).run();
+   }catch{await env.PRIVATE_FILES.delete(key);throw failure('다른 발송 처리가 진행 중입니다. 화면을 새로고침해 주세요.',409);}
+   try{
+    const {gmailAccess}=await import('./gmail.js');const access=await gmailAccess(env);
+    const gmailId=await sendCustomerQuoteEmail(access,recipient,subject,html,bytes);const sentAt=new Date().toISOString();
+    await env.DB.prepare("UPDATE mm_customer_quote_deliveries SET status='sent',gmail_id=?,sent_at=?,updated_at=? WHERE request_id=?").bind(gmailId,sentAt,sentAt,id).run();
+    return finalize({payload,pdf_key:key,sent_at:sentAt});
+   }catch(error){
+    const current=await env.DB.prepare('SELECT status FROM mm_customer_quote_deliveries WHERE request_id=?').bind(id).first();
+    if(current?.status==='sending')await env.DB.prepare("UPDATE mm_customer_quote_deliveries SET status=?,updated_at=? WHERE request_id=?").bind(error.definite?'failed':'unknown',new Date().toISOString(),id).run();
+    if(error.definite)await env.PRIVATE_FILES.delete(key);
+    throw error.status?error:failure('메일 발송 결과가 불확실합니다. 재시도 전에 Gmail 보낸메일함을 확인해 주세요.',503);
+   }
+  }
   if(data.action==='publish'){
    if(row.stage<2)throw failure('견적 작성 중 단계에서 등록해 주세요.',409);
    if(!env.PRIVATE_FILES)throw failure('비공개 파일 저장소 연결이 필요합니다.',503);
