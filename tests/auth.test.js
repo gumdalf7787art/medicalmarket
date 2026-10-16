@@ -108,6 +108,7 @@ test('email ownership, authorization, reset and OAuth identity isolation',async(
  const oldHash='sha256:12000:'+oldSalt+':'+pbkdf2Sync(oldPassword,oldSalt,12000,24,'sha256').toString('base64');
  assert.equal((await call('legacy-credentials-import',{members:[{email:'old-login@example.test',hash:oldHash}]},userCookie)).status,401);
  assert.equal((await call('legacy-credentials-import',{members:[{email:'old-login@example.test',hash:oldHash}]},ownerCookie)).status,200);
+ assert.equal((await (await call('members?legacy=1',null,ownerCookie)).json()).credentials,1);
  assert.equal((await call('login',{email:'old-login@example.test',password:'bad'})).status,401);
  const oldLogin=await call('login',{email:'old-login@example.test',password:oldPassword});assert.equal(oldLogin.status,200);
  const migrated=(await oldLogin.clone().json()).user;assert.equal(migrated.legacyName,'기존 비밀번호 회원');assert.equal(migrated.role,'user');

@@ -69,7 +69,8 @@ export async function authAction({request,env,params}){
   if(url.searchParams.get('legacy')==='1'){
    const result=await env.DB.prepare('SELECT email,name,claimed_by,imported_at FROM mm_legacy_members WHERE email LIKE ? OR name LIKE ? ORDER BY email LIMIT 51 OFFSET ?').bind('%'+q+'%','%'+q+'%',offset).all();
    const total=await env.DB.prepare('SELECT COUNT(*) AS count FROM mm_legacy_members').first();
-   return json({members:result.results.slice(0,50),next:result.results.length>50?offset+50:null,total:total.count,legacy:true});
+   const credentials=await env.DB.prepare('SELECT COUNT(*) AS count FROM mm_legacy_credentials').first();
+   return json({members:result.results.slice(0,50),next:result.results.length>50?offset+50:null,total:total.count,credentials:credentials.count,legacy:true});
   }
   const filter="FROM mm_users u WHERE u.email LIKE ? OR u.name LIKE ? OR EXISTS (SELECT 1 FROM mm_social_contacts c WHERE c.user_id=u.id AND c.email LIKE ?)";
   const terms=['%'+q+'%','%'+q+'%','%'+q+'%'];
