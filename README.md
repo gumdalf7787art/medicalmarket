@@ -58,3 +58,9 @@ npm test
 - 기존 DB / PRIVATE_FILES 바인딩을 그대로 사용합니다. 필요한 `mm_member_profiles`, `mm_favorites`, `mm_requests`, `mm_customer_quotes`, `mm_request_events` 테이블은 첫 API 접근 시 생성됩니다.
 - 예전 브라우저에만 저장한 시안 견적은 회원 소유권을 확인할 수 없으므로 자동으로 새 회원에게 연결하지 않습니다. 기존 로컬 업무 화면은 유지됩니다.
 - 검증: `node --test tests/member.test.js` (실제 SQLite 기반 회원 간 접근 분리·상태 변경·PDF), `node tests/member-ui.cjs` (빌드 후 모의 API를 이용한 PC·모바일 화면과 입력 검증). 실제 이메일 발송이나 회원 계정 생성 없이 실행됩니다.
+
+## 클라우드 공급업체 관리
+
+- 운영자 메뉴 **공급업체 관리**에서 업체명, 담당자, 견적 요청 이메일, 전화, 메모, 취급 제품을 등록·수정합니다. D1의 `mm_suppliers`와 `mm_supplier_products`에 저장되며 운영자만 조회할 수 있습니다.
+- 기존 로컬 공급업체 목록과 개인 연락처는 자동 이관하지 않습니다. 공급업체를 저장해도 메일은 발송되지 않습니다.
+- 검증: `node --test tests/suppliers.test.js`, `node tests/admin-workflow-ui.cjs` (빌드 후 모의 API). 테스트에는 예시 주소만 사용합니다.

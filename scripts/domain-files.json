@@ -11,6 +11,7 @@
   "region-data.js",
   "admin.js",
   "suppliers.js",
+  "cloud-suppliers.js",
   "supplier-mail.js",
   "product-editor.js",
   "reply-ui.js",
