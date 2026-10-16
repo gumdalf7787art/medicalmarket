@@ -4,7 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {onRequest as auth} from '../functions/api/auth/[[path]].js';
 import {onRequest as member} from '../functions/api/member/[[path]].js';
 import {seal} from '../server/gmail.js';
-import {extractSupplierPrice,quoteFromSources,renderCustomerQuoteEmail} from '../server/customer-quote.js';
+import {extractSupplierPrice,quoteFromSources,customerEmailSubject,renderCustomerQuoteEmail} from '../server/customer-quote.js';
 
 test('supplier price extraction requires evidence and preserves VAT uncertainty',()=>{
  assert.deepEqual(extractSupplierPrice('담당자 010-1234-5678 / 사업자번호 736-81-01238').price,null);
@@ -13,7 +13,13 @@ test('supplier price extraction requires evidence and preserves VAT uncertainty'
  const draft=quoteFromSources({product:{name:'초음파',model:'Q40'},qty:2},[{subject:'회신',body:'부가세 별도입니다.'}],[{name:'견적.xlsx',text:'품명 | 단가 | 70,000,000원'}]);
  assert.equal(draft.supplierUnit,70000000);assert.equal(draft.supplierVatUnit,77000000);assert.equal(draft.customerUnit,115500000);assert.equal(draft.amount,231000000);
  assert.equal(quoteFromSources({product:{name:'초음파',model:'Q40'},qty:1},[{body:'가격 1,000,000원'}]).vatStatus,'unknown');
- assert.match(renderCustomerQuoteEmail({profile:{hospital:'테스트 의원'}},{itemName:'초음파',model:'Q40',qty:1,total:1000000},'확인 부탁드립니다.'),/견적서 PDF를 첨부/);
+ const request={profile:{hospital:'테스트 의원'},product:{model:'Q40'}};
+ assert.equal(customerEmailSubject(request),'[메디컬마켓] 테스트 의원 Q40 견적서 안내');
+ assert.equal(customerEmailSubject(request,{model:'새 모델'}),'[메디컬마켓] 테스트 의원 새 모델 견적서 안내');
+ const html=renderCustomerQuoteEmail(request,{itemName:'초음파',model:'Q40',qty:1,total:1000000},'확인 부탁드립니다.');
+ assert.match(html,/견적서 PDF를 첨부/);
+ assert.match(html,/테스트 의원 담당자님, 안녕하세요.<br>메디컬마켓 · \(주\)피지오컴퍼니입니다/);
+ assert.match(html,/<strong>메디컬마켓 · \(주\)피지오컴퍼니<\/strong>/);
 });
 
 test('quote preview data is private; final send registers PDF and sends one mocked Gmail message',async()=>{

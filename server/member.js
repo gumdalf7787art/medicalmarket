@@ -106,7 +106,7 @@ export async function memberAction({request,env,params}){
    if(!env.PRIVATE_FILES)throw failure('비공개 파일 저장소 연결이 필요합니다.',503);
    if(data.reviewed!==true)throw failure('고객 제품 금액과 PDF 내용을 확인해 주세요.');
    const quote=normalizeCustomerQuote(requestData,data),recipient=emailValue(requestData.profile.email);
-   const subject=text(data.emailSubject,160)||customerEmailSubject(requestData);
+   const subject=text(data.emailSubject,160)||customerEmailSubject(requestData,quote);
    if(/[\r\n]/.test(subject))throw failure('이메일 제목을 확인해 주세요.');
    const message=text(data.emailMessage,2000),html=renderCustomerQuoteEmail(requestData,quote,message);
    let bytes;try{bytes=Uint8Array.from(atob(data.pdf||''),c=>c.charCodeAt(0));}catch{throw failure('PDF 파일을 확인해 주세요.');}
