@@ -36,8 +36,13 @@ function supplierInput(data){
 
 async function productLinks(env,ids){
   if(!ids.length)return [];
-  const rows=await env.DB.prepare(`SELECT id FROM mm_products WHERE id IN (${ids.map(()=>'?').join(',')}) AND deleted=0`).bind(...ids).all();
-  if(rows.results.length!==ids.length)throw failure('존재하지 않는 제품이 포함되어 있습니다. 목록을 새로고침해 주세요.',409);
+  const found=new Set();
+  for(let start=0;start<ids.length;start+=40){
+    const chunk=ids.slice(start,start+40);
+    const rows=await env.DB.prepare(`SELECT id FROM mm_products WHERE id IN (${chunk.map(()=>'?').join(',')}) AND deleted=0`).bind(...chunk).all();
+    for(const row of rows.results)found.add(row.id);
+  }
+  if(found.size!==ids.length)throw failure(`등록되지 않은 제품 ${ids.filter(id=>!found.has(id)).length}개가 포함되어 있습니다.`,409);
   return ids;
 }
 

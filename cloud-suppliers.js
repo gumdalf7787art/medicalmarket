@@ -2,7 +2,7 @@ let cloudSupplierRows=null,cloudSupplierTotal=0,cloudSupplierPage=1,cloudSupplie
 
 async function loadCloudSuppliers(){
   if(cloudSupplierBusy)return;
-  cloudSupplierBusy=true;cloudSupplierError='';
+  cloudSupplierBusy=true;
   try{
     const query=new URLSearchParams({page:String(cloudSupplierPage),q:cloudSupplierQuery});
     const response=await fetch('/api/suppliers?'+query,{credentials:'same-origin',cache:'no-store'});
