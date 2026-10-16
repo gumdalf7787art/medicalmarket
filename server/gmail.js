@@ -33,7 +33,7 @@ async function supplierOptions(env,requestId){
  const row=await supplierRequest(env,requestId),productId=row.payload.product?.id;
  const rows=await env.DB.prepare(`SELECT s.id,s.company,s.email,s.phone,s.active,d.classification,d.review_status,d.company_phone,d.company_email,d.contacts_json
   FROM mm_suppliers s JOIN mm_supplier_products p ON p.supplier_id=s.id
-  LEFT JOIN mm_supplier_details d ON d.supplier_id=s.id WHERE p.product_id=? ORDER BY s.active DESC,s.company`).bind(productId).all();
+  LEFT JOIN mm_supplier_details d ON d.supplier_id=s.id WHERE p.product_id=? AND COALESCE(d.source_key,'')!='legacy:medicalmarket' ORDER BY s.active DESC,s.company`).bind(productId).all();
  const suppliers=rows.results.map(s=>({id:s.id,company:s.company,email:s.email,phone:s.company_phone||s.phone,companyEmail:s.company_email||'',active:!!s.active,classification:s.classification||'manual',reviewStatus:s.review_status||'needs_review',contacts:JSON.parse(s.contacts_json||'[]')}));
  const delivery=await env.DB.prepare('SELECT supplier_id,recipient,status,gmail_id,sent_at FROM mm_supplier_mail WHERE request_id=?').bind(requestId).first();
  const connection=await env.DB.prepare('SELECT email FROM mm_gmail_connection WHERE id=1').first();

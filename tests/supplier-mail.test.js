@@ -23,9 +23,11 @@ test('request-linked supplier contact requires review and sends one Gmail messag
  assert.equal(request.status,201);const requestId=(await request.json()).id;
  const supplier={sourceKey:'legacy:company-1',classification:'candidate',reviewStatus:'needs_review',company:'시험 제조사',companyPhone:'02-0000-0000',companyEmail:'',email:'',phone:'02-0000-0000',contacts:[{id:'contact-1',name:'견적 담당자',email:'supplier@example.test',phone:'02-1111-1111',mobile:'010-1111-1111'}],productIds:['legacy-10'],active:false};
  const imported=await invoke(suppliers,'suppliers','import',supplier,operatorCookie);assert.equal(imported.status,201);const supplierId=(await imported.json()).id;
+ await invoke(suppliers,'suppliers','import',{...supplier,sourceKey:'legacy:medicalmarket',company:'메디컬마켓'},operatorCookie);
  const optionsPath='supplier-options?requestId='+requestId;
  assert.equal((await invoke(mail,'mail',optionsPath,undefined,buyerCookie)).status,401);
  const options=(await (await invoke(mail,'mail',optionsPath,undefined,operatorCookie)).json());
+ assert.equal(options.suppliers.length,1);
  assert.equal(options.suppliers[0].contacts[0].mobile,'010-1111-1111');assert.equal(options.suppliers[0].active,false);
  const send={requestId,supplierId,contactId:'contact-1'};
  assert.equal((await invoke(mail,'mail','supplier-send',send,operatorCookie)).status,409);
