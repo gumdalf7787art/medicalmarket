@@ -1,5 +1,5 @@
 import {failure,sameOrigin} from './cloud.js';
-import {authSchema,random,digest,cookie,readCookie,takeToken,limit,siteOrigin,sessionResponse} from './auth.js';
+import {authSchema,random,digest,cookie,readCookie,takeToken,limit,siteOrigin,sessionResponse,emailValue} from './auth.js';
 
 function config(provider,env){
  if(provider==='kakao')return {id:env.KAKAO_CLIENT_ID,secret:env.KAKAO_CLIENT_SECRET,authorize:'https://kauth.kakao.com/oauth/authorize',token:'https://kauth.kakao.com/oauth/token',profile:'https://kapi.kakao.com/v2/user/me'};
@@ -27,13 +27,14 @@ export async function oauthAction({request,env,params}){
    const profileResponse=await fetch(cfg.profile,{headers:{Authorization:'Bearer '+tokens.access_token}}),raw=await profileResponse.json();
    const profile=provider==='naver'?raw.response:raw;if(!profileResponse.ok||!profile?.id)throw failure('회원 정보를 확인하지 못했습니다.');
    const nickname=String(provider==='naver'?(profile.nickname||''):(profile.kakao_account?.profile?.nickname||profile.properties?.nickname||'')).trim().slice(0,80);
-   const session=await completeSocial(env,provider,String(profile.id),nickname);
+   let contactEmail='';try{contactEmail=emailValue(provider==='naver'?profile.email:profile.kakao_account?.email);}catch{}
+   const session=await completeSocial(env,provider,String(profile.id),nickname,contactEmail);
    return redirect('/#home',{'Set-Cookie':session.headers.get('Set-Cookie')});
   }catch(error){return redirect('/#auth/login?error='+encodeURIComponent(error.status?error.message:'SNS 로그인 연결을 확인해 주세요.'),{'Set-Cookie':cookie('mm_oauth','',0)});}
  }
  throw failure('요청 경로를 확인해 주세요.',404);
 }
-async function completeSocial(env,provider,subject,nickname){
+async function completeSocial(env,provider,subject,nickname,contactEmail=''){
  config(provider,env);
  let identity=await env.DB.prepare('SELECT u.* FROM mm_identities i JOIN mm_users u ON u.id=i.user_id WHERE i.provider=? AND i.subject=?').bind(provider,subject).first();
    if(identity?.disabled)throw failure('이용이 제한된 계정입니다. 운영자에게 문의해 주세요.',403);
@@ -53,6 +54,12 @@ async function completeSocial(env,provider,subject,nickname){
     }
     if(!identity||identity.disabled)throw failure('이용이 제한된 계정입니다. 운영자에게 문의해 주세요.',403);
     if(nickname&&identity.name!==nickname){await env.DB.prepare('UPDATE mm_users SET name=? WHERE id=? AND disabled=0').bind(nickname,identity.id).run();identity.name=nickname;}
+   }
+   if(contactEmail){
+    await env.DB.prepare('INSERT INTO mm_social_contacts(user_id,provider,email,updated_at) VALUES (?,?,?,?) ON CONFLICT(user_id,provider) DO UPDATE SET email=excluded.email,updated_at=excluded.updated_at').bind(identity.id,provider,contactEmail,new Date().toISOString()).run();
+    identity.socialEmail=contactEmail;
+   }else{
+    identity.socialEmail=(await env.DB.prepare('SELECT email FROM mm_social_contacts WHERE user_id=? ORDER BY updated_at DESC LIMIT 1').bind(identity.id).first())?.email||'';
    }
 
  return sessionResponse(identity,env);

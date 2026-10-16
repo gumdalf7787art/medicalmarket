@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
+import {pbkdf2Sync} from 'node:crypto';
 import {onRequest} from '../functions/api/auth/[[path]].js';
 import {authenticated,mac} from '../server/cloud.js';
 import {authSchema,putToken} from '../server/auth.js';
@@ -65,7 +66,7 @@ test('email ownership, authorization, reset and OAuth identity isolation',async(
  const callback=await onRequest({env,params:{path:['oauth','kakao','callback']},request:new Request('https://example.test/api/auth/oauth/kakao/callback?state='+state2+'&code=mock',{headers:{Cookie:sessionCookie(start2)}})});
  assert.equal(callback.headers.get('location'),'/#home');
  const social=(await (await call('session',null,sessionCookie(callback))).json()).user;
- assert.equal(social.name,'SNS tester');assert.equal(social.role,'user');assert.equal(social.email,'');assert.notEqual(social.id,owner.id,'provider email must not take over owner');
+ assert.equal(social.name,'SNS tester');assert.equal(social.role,'user');assert.equal(social.email,'');assert.equal(social.displayEmail,'owner@example.test');assert.notEqual(social.id,owner.id,'provider email must not take over owner');
  const kakaoLogin=async()=>{const start=await call('oauth/kakao/start'),state=new URL(start.headers.get('location')).searchParams.get('state');return onRequest({env,params:{path:['oauth','kakao','callback']},request:new Request('https://example.test/api/auth/oauth/kakao/callback?state='+state+'&code=mock',{headers:{Cookie:sessionCookie(start)}})});};
  db.prepare('UPDATE mm_users SET name=? WHERE id=?').run('Previously entered name',social.id);
  const repeat=await kakaoLogin();assert.equal(repeat.headers.get('location'),'/#home');
@@ -79,6 +80,7 @@ test('email ownership, authorization, reset and OAuth identity isolation',async(
  const naverResponse=await naverLogin();assert.equal(naverResponse.headers.get('location'),'/#home');
  const naverUser=(await (await call('session',null,sessionCookie(naverResponse))).json()).user;
  assert.equal(naverUser.name,'네이버 별명');assert.equal(naverUser.role,'user');assert.equal(naverUser.email,'');assert.notEqual(naverUser.id,social.id);assert.notEqual(naverUser.id,owner.id);
+ assert.equal(naverUser.displayEmail,'owner@example.test');
  naverNickname='바뀐 별명';const naverAgain=await naverLogin();
  const naverUpdated=(await (await call('session',null,sessionCookie(naverAgain))).json()).user;
  assert.equal(naverUpdated.id,naverUser.id);assert.equal(naverUpdated.name,naverNickname);
@@ -101,6 +103,19 @@ test('email ownership, authorization, reset and OAuth identity isolation',async(
  assert.equal((await call('members?legacy=1')).status,403);
  assert.equal((await call('members?legacy=1',null,userCookie)).status,403);
  env.OWNER_USER_ID=ownerId;
+ assert.equal((await call('legacy-import',{members:[{email:'old-login@example.test',name:'기존 비밀번호 회원'}]},ownerCookie)).status,200);
+ const oldPassword='old7',oldSalt='abcdefghijklmnopqrstuvwx12345678';
+ const oldHash='sha256:12000:'+oldSalt+':'+pbkdf2Sync(oldPassword,oldSalt,12000,24,'sha256').toString('base64');
+ assert.equal((await call('legacy-credentials-import',{members:[{email:'old-login@example.test',hash:oldHash}]},userCookie)).status,401);
+ assert.equal((await call('legacy-credentials-import',{members:[{email:'old-login@example.test',hash:oldHash}]},ownerCookie)).status,200);
+ assert.equal((await call('login',{email:'old-login@example.test',password:'bad'})).status,401);
+ const oldLogin=await call('login',{email:'old-login@example.test',password:oldPassword});assert.equal(oldLogin.status,200);
+ const migrated=(await oldLogin.clone().json()).user;assert.equal(migrated.legacyName,'기존 비밀번호 회원');assert.equal(migrated.role,'user');
+ assert.equal((await call('login',{email:'old-login@example.test',password:oldPassword})).status,200);
+ assert.equal(db.prepare('SELECT COUNT(*) AS n FROM mm_users WHERE email=?').get('old-login@example.test').n,1);
+ assert.equal(db.prepare('SELECT COUNT(*) AS n FROM mm_legacy_credentials WHERE email=?').get('old-login@example.test').n,0);
+ const memberList=await call('members',null,ownerCookie);assert.equal(memberList.status,200);
+ assert((await memberList.json()).members.some(row=>row.socialEmail==='owner@example.test'));
  // Legacy claim requires a mail token, never just an email or a signup.
  const beforeMail=mails.length;
  assert.equal((await call('legacy',{email:'legacy@example.test'})).status,200);
@@ -134,5 +149,8 @@ test('email ownership, authorization, reset and OAuth identity isolation',async(
  assert.equal((await call('legacy-activate',{token:expiredToken,password:'Expired-password123!',consent:true})).status,400);
  delete env.AUTH_MAIL_API_KEY;assert.equal((await call('legacy',{email:'legacy@example.test'})).status,503);
  env.AUTH_MAIL_API_KEY=originalKey;
+ assert.equal((await call('role',{id:user.id,role:'user'},ownerCookie)).status,200);
+ assert.equal((await (await call('session',null,adminCookie)).json()).user,null,'demotion invalidates old sessions');
+ assert.equal((await call('login',{email:'user@example.test',password:'Changed-test-password123!'})).status,200);
  globalThis.fetch=originalFetch;
 });

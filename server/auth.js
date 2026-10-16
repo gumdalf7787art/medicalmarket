@@ -16,13 +16,15 @@ export async function authSchema(env){
   env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_auth_tokens(hash TEXT PRIMARY KEY,kind TEXT NOT NULL,payload TEXT NOT NULL,expires INTEGER NOT NULL)'),
   env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_auth_limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,expires INTEGER NOT NULL)'),
   env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_auth_audit(id TEXT PRIMARY KEY,actor TEXT NOT NULL,target TEXT NOT NULL,action TEXT NOT NULL,at TEXT NOT NULL)'),
-  env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_legacy_members(email TEXT PRIMARY KEY,name TEXT NOT NULL,claimed_by TEXT,imported_at TEXT NOT NULL)')
+  env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_legacy_members(email TEXT PRIMARY KEY,name TEXT NOT NULL,claimed_by TEXT,imported_at TEXT NOT NULL)'),
+  env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_legacy_credentials(email TEXT PRIMARY KEY,password_hash TEXT NOT NULL,imported_at TEXT NOT NULL)'),
+  env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_social_contacts(user_id TEXT NOT NULL,provider TEXT NOT NULL,email TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(user_id,provider))')
  ]);
 }
-export function publicUser(user,env){if(!user)return null;return {id:user.id,email:user.email||'',name:user.name,role:user.role,legacyName:user.legacyName||'',owner:user.role==='admin'&&!!env.OWNER_USER_ID&&user.id===env.OWNER_USER_ID};}
+export function publicUser(user,env){if(!user)return null;return {id:user.id,email:user.email||'',socialEmail:user.socialEmail||'',displayEmail:user.email||user.socialEmail||'',name:user.name,role:user.role,legacyName:user.legacyName||'',owner:user.role==='admin'&&!!env.OWNER_USER_ID&&user.id===env.OWNER_USER_ID};}
 export async function currentUser(request,env){
  const token=readCookie(request,'mm_session');if(!/^[a-f0-9]{64}$/.test(token))return null;await authSchema(env);
- return env.DB.prepare('SELECT u.*,l.name AS legacyName FROM mm_sessions s JOIN mm_users u ON u.id=s.user_id LEFT JOIN mm_legacy_members l ON l.claimed_by=u.id WHERE s.hash=? AND s.expires>? AND u.disabled=0').bind(await digest(token),Date.now()).first();
+ return env.DB.prepare('SELECT u.*,l.name AS legacyName,(SELECT email FROM mm_social_contacts c WHERE c.user_id=u.id ORDER BY updated_at DESC LIMIT 1) AS socialEmail FROM mm_sessions s JOIN mm_users u ON u.id=s.user_id LEFT JOIN mm_legacy_members l ON l.claimed_by=u.id WHERE s.hash=? AND s.expires>? AND u.disabled=0').bind(await digest(token),Date.now()).first();
 }
 export async function userRequired(request,env){const user=await currentUser(request,env);if(!user)throw failure('로그인이 필요합니다.',401);return user;}
 export async function limit(request,env,scope,max=8){
@@ -31,12 +33,20 @@ export async function limit(request,env,scope,max=8){
  const row=await env.DB.prepare('INSERT INTO mm_auth_limits(key,count,expires) VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET count=count+1 RETURNING count').bind(key,now+15*60000).first();
  if(row.count>max)throw failure('시도가 많습니다. 15분 후 다시 시도해 주세요.',429);
 }
-export async function hashPassword(password,salt=random()){
- if(typeof password!=='string'||password.length<12||password.length>128)throw failure('비밀번호는 12~128자로 입력해 주세요.');
+export async function hashPassword(password,salt=random(),allowExisting=false){
+ if(typeof password!=='string'||password.length>(allowExisting?255:128)||(!allowExisting&&password.length<12))throw failure('비밀번호는 12~128자로 입력해 주세요.');
  const key=await crypto.subtle.importKey('raw',enc.encode(password),'PBKDF2',false,['deriveBits']);
  // Workers Web Crypto permits at most 100,000 iterations. Version the format for future upgrades.
  const bits=await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:enc.encode(salt),iterations:100000},key,256);
  return 'pbkdf2-sha256:100000:'+salt+':'+Array.from(new Uint8Array(bits),b=>b.toString(16).padStart(2,'0')).join('');
+}
+const legacyHashPattern=/^sha256:12000:[A-Za-z0-9+/]{32}:[A-Za-z0-9+/]{32}$/;
+export async function verifyLegacyPassword(password,hash){
+ if(typeof password!=='string'||!password||password.length>255||!legacyHashPattern.test(hash||''))return false;
+ const [,iterations,salt,encodedHash]=hash.split(':'),expected=Uint8Array.from(atob(encodedHash),c=>c.charCodeAt(0));
+ const key=await crypto.subtle.importKey('raw',enc.encode(password),'PBKDF2',false,['deriveBits']);
+ const actual=new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:enc.encode(salt),iterations:Number(iterations)},key,expected.length*8));
+ return actual.reduce((diff,byte,index)=>diff|(byte^expected[index]),0)===0;
 }
 export async function sessionResponse(user,env){const token=random();await env.DB.prepare('DELETE FROM mm_sessions WHERE expires<?').bind(Date.now()).run();await env.DB.prepare('INSERT INTO mm_sessions(hash,user_id,expires) VALUES (?,?,?)').bind(await digest(token),user.id,Date.now()+86400000).run();return json({user:publicUser(user,env)},200,{'Set-Cookie':cookie('mm_session',token,86400)});}
 export async function putToken(env,kind,payload,minutes=30){const token=random();await env.DB.prepare('DELETE FROM mm_auth_tokens WHERE expires<?').bind(Date.now()).run();await env.DB.prepare('INSERT INTO mm_auth_tokens(hash,kind,payload,expires) VALUES (?,?,?,?)').bind(await digest(token),kind,JSON.stringify(payload),Date.now()+minutes*60000).run();return token;}
@@ -60,10 +70,14 @@ export async function authAction({request,env,params}){
    const total=await env.DB.prepare('SELECT COUNT(*) AS count FROM mm_legacy_members').first();
    return json({members:result.results.slice(0,50),next:result.results.length>50?offset+50:null,total:total.count,legacy:true});
   }
-  const rows=await env.DB.prepare('SELECT id,email,name,role,verified,created_at FROM mm_users WHERE email LIKE ? OR name LIKE ? ORDER BY created_at DESC LIMIT 51 OFFSET ?').bind('%'+q+'%','%'+q+'%',offset).all();return json({members:rows.results.slice(0,50),next:rows.results.length>50?offset+50:null,owner:publicUser(user,env)?.owner||false,bootstrapAvailable:!env.OWNER_USER_ID&&!user&&!await env.DB.prepare("SELECT id FROM mm_users WHERE role='admin' UNION ALL SELECT id FROM mm_auth_audit WHERE action='bootstrap:admin' LIMIT 1").first()});
+  const filter="FROM mm_users u WHERE u.email LIKE ? OR u.name LIKE ? OR EXISTS (SELECT 1 FROM mm_social_contacts c WHERE c.user_id=u.id AND c.email LIKE ?)";
+  const terms=['%'+q+'%','%'+q+'%','%'+q+'%'];
+  const rows=await env.DB.prepare('SELECT u.id,u.email,u.name,u.role,u.verified,u.created_at,(SELECT email FROM mm_social_contacts c WHERE c.user_id=u.id ORDER BY updated_at DESC LIMIT 1) AS socialEmail '+filter+' ORDER BY u.created_at DESC,u.id DESC LIMIT 51 OFFSET ?').bind(...terms,offset).all();
+  const total=await env.DB.prepare('SELECT COUNT(*) AS count '+filter).bind(...terms).first();
+  return json({members:rows.results.slice(0,50),next:rows.results.length>50?offset+50:null,total:total.count,offset,owner:publicUser(user,env)?.owner||false,bootstrapAvailable:!env.OWNER_USER_ID&&!user&&!await env.DB.prepare("SELECT id FROM mm_users WHERE role='admin' UNION ALL SELECT id FROM mm_auth_audit WHERE action='bootstrap:admin' LIMIT 1").first()});
  }
  if(request.method!=='POST')throw failure('지원하지 않는 요청입니다.',405);
- sameOrigin(request);const data=await bodyJson(request,8192);
+ sameOrigin(request);const data=await bodyJson(request,path==='legacy-credentials-import'?32768:8192);
  if(path==='logout'){const token=readCookie(request,'mm_session');await env.DB.prepare('DELETE FROM mm_sessions WHERE hash=?').bind(await digest(token)).run();return json({user:null},200,{'Set-Cookie':cookie('mm_session','',0)});}
  if(path==='signup'){
   await limit(request,env,'signup',5);if(data.consent!==true)throw failure('개인정보 수집·이용 동의가 필요합니다.');
@@ -76,9 +90,23 @@ export async function authAction({request,env,params}){
  }
  if(path==='login'){
   await limit(request,env,'login');const email=emailValue(data.email),user=await env.DB.prepare('SELECT * FROM mm_users WHERE email=?').bind(email).first();
-  const candidate=await hashPassword(data.password,user?.password?.split(':')[2]||'00000000000000000000000000000000');
-  if(!user||!user.password||!await equal(candidate,user.password)||user.disabled)throw failure('이메일 또는 비밀번호를 확인해 주세요.',401);
-  return sessionResponse(user,env);
+  if(user){
+   const candidate=await hashPassword(data.password,user.password?.split(':')[2]||'00000000000000000000000000000000',true);
+   if(!user.password||!await equal(candidate,user.password)||user.disabled)throw failure('이메일 또는 비밀번호를 확인해 주세요.',401);
+   return sessionResponse(user,env);
+  }
+  const legacy=await env.DB.prepare('SELECT l.name,c.password_hash FROM mm_legacy_members l JOIN mm_legacy_credentials c ON c.email=l.email WHERE l.email=? AND l.claimed_by IS NULL').bind(email).first();
+  if(!legacy||!await verifyLegacyPassword(data.password,legacy.password_hash))throw failure('이메일 또는 비밀번호를 확인해 주세요.',401);
+  const id=crypto.randomUUID(),at=new Date().toISOString(),password=await hashPassword(data.password,random(),true);
+  await env.DB.batch([
+   env.DB.prepare("INSERT INTO mm_users(id,email,name,password,role,verified,created_at,consent_at) SELECT ?,l.email,l.name,?,'user',1,?,'' FROM mm_legacy_members l JOIN mm_legacy_credentials c ON c.email=l.email WHERE l.email=? AND l.claimed_by IS NULL AND c.password_hash=? ON CONFLICT(email) DO NOTHING").bind(id,password,at,email,legacy.password_hash),
+   env.DB.prepare('UPDATE mm_legacy_members SET claimed_by=? WHERE email=? AND claimed_by IS NULL AND EXISTS (SELECT 1 FROM mm_users WHERE id=? AND email=?)').bind(id,email,id,email),
+   env.DB.prepare('DELETE FROM mm_legacy_credentials WHERE email=? AND EXISTS (SELECT 1 FROM mm_legacy_members WHERE email=? AND claimed_by=?)').bind(email,email,id),
+   env.DB.prepare("INSERT INTO mm_auth_audit(id,actor,target,action,at) SELECT ?,?,?,?,? WHERE EXISTS (SELECT 1 FROM mm_legacy_members WHERE email=? AND claimed_by=?)").bind(crypto.randomUUID(),id,id,'legacy:password-migrated',at,email,id)
+  ]);
+  const migrated=await env.DB.prepare('SELECT u.*,l.name AS legacyName FROM mm_users u JOIN mm_legacy_members l ON l.claimed_by=u.id WHERE u.id=? AND u.role=? AND u.disabled=0').bind(id,'user').first();
+  if(!migrated)throw failure('이메일 또는 비밀번호를 확인해 주세요.',401);
+  return sessionResponse(migrated,env);
  }
  if(path==='verify')throw failure('이메일 인증 없이 로그인할 수 있습니다. 이메일과 비밀번호로 로그인해 주세요.',410);
  if(path==='legacy'){
@@ -106,6 +134,7 @@ export async function authAction({request,env,params}){
    env.DB.prepare('DELETE FROM mm_sessions WHERE user_id IN (SELECT id FROM mm_users WHERE email=? AND password=?)').bind(email,password),
    env.DB.prepare("DELETE FROM mm_auth_tokens WHERE (kind='legacy-activate' AND json_extract(payload,'$.email')=?) OR (kind IN ('reset','verify') AND json_extract(payload,'$.id') IN (SELECT id FROM mm_users WHERE email=? AND password=?))").bind(email,email,password)
   ]);
+  await env.DB.prepare('DELETE FROM mm_legacy_credentials WHERE email=? AND EXISTS (SELECT 1 FROM mm_legacy_members WHERE email=? AND claimed_by IS NOT NULL)').bind(email,email).run();
   const user=await env.DB.prepare('SELECT u.*,l.name AS legacyName FROM mm_users u JOIN mm_legacy_members l ON l.claimed_by=u.id WHERE u.email=? AND u.password=? AND u.disabled=0').bind(email,password).first();
   if(!user||user.role!=='user')throw failure('계정 상태가 변경되었습니다. 다시 요청해 주세요.',409);
   await env.DB.prepare('INSERT INTO mm_auth_audit VALUES (?,?,?,?,?)').bind(crypto.randomUUID(),user.id,user.id,'legacy:email-verified',at).run();
@@ -142,6 +171,15 @@ export async function authAction({request,env,params}){
   if(!Array.isArray(data.members)||data.members.length>20)throw failure('최대 20명씩 가져올 수 있습니다.');
   const rows=data.members.map(row=>({email:emailValue(row.email),name:String(row.name||'').trim().slice(0,80)}));if(rows.some(row=>!row.name))throw failure('회원 이름을 확인해 주세요.');
   const at=new Date().toISOString();await env.DB.batch([...rows.map(row=>env.DB.prepare('INSERT INTO mm_legacy_members(email,name,imported_at) VALUES (?,?,?) ON CONFLICT(email) DO NOTHING').bind(row.email,row.name,at)),env.DB.prepare('INSERT INTO mm_auth_audit VALUES (?,?,?,?,?)').bind(crypto.randomUUID(),actor?.id||'bootstrap-admin','legacy','import:'+rows.length,at)]);return json({count:rows.length});
+ }
+ if(path==='legacy-credentials-import'){
+  const actor=await userRequired(request,env);if(!publicUser(actor,env).owner)throw failure('최초 운영자 본인만 기존 비밀번호를 이전할 수 있습니다.',403);
+  if(!Array.isArray(data.members)||data.members.length>20)throw failure('최대 20명씩 가져올 수 있습니다.');
+  const rows=data.members.map(row=>({email:emailValue(row.email),hash:String(row.hash||'')}));
+  if(rows.some(row=>!legacyHashPattern.test(row.hash)))throw failure('기존 비밀번호 형식을 확인해 주세요.');
+  const at=new Date().toISOString();
+  await env.DB.batch(rows.map(row=>env.DB.prepare('INSERT INTO mm_legacy_credentials(email,password_hash,imported_at) SELECT ?,?,? WHERE EXISTS (SELECT 1 FROM mm_legacy_members WHERE email=? AND claimed_by IS NULL) AND NOT EXISTS (SELECT 1 FROM mm_users WHERE email=?) ON CONFLICT(email) DO NOTHING').bind(row.email,row.hash,at,row.email,row.email)));
+  return json({count:rows.length});
  }
  throw failure('요청 경로를 확인해 주세요.',404);
 }
