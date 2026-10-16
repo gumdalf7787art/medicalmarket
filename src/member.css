@@ -44,4 +44,6 @@ body.is-member{background:#f4f6fa}body.is-member #medicalmarket-root>header,body
 .cloud-reply-alert{display:block;margin-bottom:18px;padding:16px 20px;border:1px solid #a6c4f4;border-radius:10px;background:#e9f1ff;color:#174b9a;font-weight:700}
 .supplier-reply-badge{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:5px 9px;border:1px solid #f4b5b5;border-radius:99px;background:#fff0f0;color:#b4232c;font-size:11px;font-weight:800;line-height:1.3;white-space:nowrap}
 .supplier-reply-dot{width:7px;height:7px;border-radius:50%;background:#dc3545;box-shadow:0 0 0 3px #fbd5d8}
+.supplier-reply-marker-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin-top:8px}
+.supplier-reply-marker-row>.supplier-reply-badge{grid-column:2 / span 2;justify-self:start;margin-top:0;max-width:100%;white-space:normal}
 @media(max-width:950px){.cloud-supplier-compose-grid{grid-template-columns:1fr}}
