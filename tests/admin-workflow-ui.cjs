@@ -29,7 +29,11 @@ let browser;
   else if(p==='/api/cloud/status')data={};
   else if(p==='/api/cloud/attachments')data={attachments:{}};
   else if(p==='/api/cloud/products')data={products:[{id:'managed-qa',name:'실제 장비',model:'QA-100',maker:'제조사',image:'assets/sample-device.svg',published:true,gallery:[]}],next:null,total:1};
-  else if(p==='/api/suppliers'&&req.method()==='POST'){supplier={...req.postDataJSON(),id:'supplier-1'};data={supplier};}
+  else if(p==='/api/suppliers'&&req.method()==='POST'){
+   const body=req.postDataJSON();
+   if(body.productIds.some(id=>id!=='managed-qa'))return route.fulfill({status:400,json:{error:'존재하지 않는 제품이 포함되어 있습니다.'}});
+   supplier={...body,id:'supplier-1'};data={supplier};
+  }
   else if(p==='/api/suppliers')data={suppliers:supplier?[supplier]:[],total:supplier?1:0,page:1};
   else if(p==='/api/member/admin/overview')data={counts:{total:1,cancelled:0,received:stage===0?1:0,supplier:stage===1?1:0,preparing:0,published:0},recent:[record()],pending:[record()]};
   else if(p==='/api/member/admin/REQ-real-1'&&req.method()==='POST'){stage=req.postDataJSON().stage;data={ok:true};}
@@ -71,6 +75,7 @@ let browser;
  await page.locator('#cloud-supplier-form [name="company"]').fill('시험 공급업체');
  await page.locator('#cloud-supplier-form [name="email"]').fill('supplier@example.test');
  const linkedProduct=await page.locator('#cloud-supplier-form [name="productIds"] option').first().getAttribute('value');
+ assert.equal(linkedProduct,'managed-qa');
  await page.locator('#cloud-supplier-form [name="productIds"]').selectOption(linkedProduct);
  await page.getByRole('button',{name:'D1에 저장'}).click();
  await page.getByText('supplier@example.test').waitFor();

@@ -15,7 +15,9 @@ async function loadCloudSuppliers(){
 
 function cloudSupplierForm(row){
   const current=new Set(row?.productIds||[]);
-  const choices=products.filter(p=>!p.deleted).sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ko'));
+  // Supplier links use the raw D1 product ID. `products` is the storefront
+  // projection and prefixes managed IDs, so it cannot be sent to this API.
+  const choices=Object.values(managementState.products).filter(p=>!p.deleted).sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ko'));
   return `<section class="admin-panel cloud-supplier-form"><div class="admin-panel-title"><h2>${row?'공급업체 수정':'공급업체 등록'}</h2>${row?'<button type="button" data-cloud-supplier-cancel>닫기</button>':''}</div>
     <form id="cloud-supplier-form" data-id="${e(row?.id||'')}">
       <div class="supplier-edit-grid"><label>업체명 *<input name="company" value="${e(row?.company||'')}" maxlength="120" required></label>
