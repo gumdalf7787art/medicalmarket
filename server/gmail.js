@@ -25,6 +25,9 @@ const wrapBase64=value=>value.match(/.{1,76}/g)?.join('\r\n')||'';
 export async function supplierMailSchema(env){
  await memberSchema(env);await supplierSchema(env);
  await env.DB.prepare("CREATE TABLE IF NOT EXISTS mm_supplier_mail(request_id TEXT PRIMARY KEY,supplier_id TEXT NOT NULL,recipient TEXT NOT NULL,status TEXT NOT NULL,gmail_id TEXT NOT NULL DEFAULT '',sent_at TEXT,updated_at TEXT NOT NULL)").run();
+ await env.DB.prepare("CREATE TABLE IF NOT EXISTS mm_supplier_mail_followups(id TEXT PRIMARY KEY,request_id TEXT NOT NULL,supplier_id TEXT NOT NULL,recipient TEXT NOT NULL,status TEXT NOT NULL,gmail_id TEXT NOT NULL DEFAULT '',sent_at TEXT,updated_at TEXT NOT NULL)").run();
+ await env.DB.prepare('CREATE INDEX IF NOT EXISTS mm_supplier_mail_followups_request ON mm_supplier_mail_followups(request_id,sent_at)').run();
+ await env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS mm_supplier_mail_followups_pending ON mm_supplier_mail_followups(request_id) WHERE status IN ('sending','unknown')").run();
 }
 async function supplierRequest(env,requestId){
  if(!/^REQ-[a-f0-9-]{36}$/i.test(requestId))throw failure('견적 요청을 확인해 주세요.');
@@ -39,9 +42,10 @@ async function supplierOptions(env,requestId){
   LEFT JOIN mm_supplier_details d ON d.supplier_id=s.id WHERE p.product_id=? AND COALESCE(d.source_key,'')!='legacy:medicalmarket' ORDER BY s.active DESC,s.company`).bind(productId).all();
  const suppliers=rows.results.map(s=>({id:s.id,company:s.company,email:s.email,phone:s.company_phone||s.phone,companyEmail:s.company_email||'',active:!!s.active,classification:s.classification||'manual',reviewStatus:s.review_status||'needs_review',contacts:JSON.parse(s.contacts_json||'[]')}));
  const delivery=await env.DB.prepare('SELECT supplier_id,recipient,status,gmail_id,sent_at FROM mm_supplier_mail WHERE request_id=?').bind(requestId).first();
+ const followups=await env.DB.prepare('SELECT id,supplier_id,recipient,status,gmail_id,sent_at FROM mm_supplier_mail_followups WHERE request_id=? ORDER BY updated_at DESC LIMIT 20').bind(requestId).all();
  const connection=await env.DB.prepare('SELECT email FROM mm_gmail_connection WHERE id=1').first();
  const certificate=env.PRIVATE_FILES?await env.PRIVATE_FILES.head(certificateKey):null;
- return {suppliers,delivery:delivery?{supplierId:delivery.supplier_id,recipient:delivery.recipient,status:delivery.status,gmailId:delivery.gmail_id,sentAt:delivery.sent_at}:null,gmailEmail:connection?.email||'',certificateReady:!!certificate,certificateName,product:row.payload.product,qty:row.payload.qty,requestStage:row.stage,cancelled:!!row.cancelled};
+ return {suppliers,delivery:delivery?{supplierId:delivery.supplier_id,recipient:delivery.recipient,status:delivery.status,gmailId:delivery.gmail_id,sentAt:delivery.sent_at}:null,followups:followups.results.map(item=>({id:item.id,supplierId:item.supplier_id,recipient:item.recipient,status:item.status,gmailId:item.gmail_id,sentAt:item.sent_at})),gmailEmail:connection?.email||'',certificateReady:!!certificate,certificateName,product:row.payload.product,qty:row.payload.qty,requestStage:row.stage,cancelled:!!row.cancelled};
 }
 async function supplierPreview(env,input){
  const row=await supplierRequest(env,String(input.requestId||''));
@@ -56,9 +60,9 @@ async function supplierPreview(env,input){
 }
 async function supplierSend(request,env,input){
  await limit(request,env,'supplier-send',30);
- const requestId=String(input.requestId||''),supplierId=String(input.supplierId||''),contactId=String(input.contactId||'');
+ const requestId=String(input.requestId||''),supplierId=String(input.supplierId||''),contactId=String(input.contactId||''),followup=input.followup===true,sendId=followup?crypto.randomUUID():requestId;
  const row=await supplierRequest(env,requestId);
- if(row.cancelled||row.stage!==0)throw failure('접수 단계의 요청만 업체에 보낼 수 있습니다.',409);
+ if(row.cancelled||(!followup&&row.stage!==0)||(followup&&![1,2].includes(row.stage)))throw failure(followup?'진행 중인 요청에서만 추가 메일을 보낼 수 있습니다.':'접수 단계의 요청만 업체에 보낼 수 있습니다.',409);
  if(input.reviewed!==true)throw failure('업체·수신 이메일·제품·수량을 확인해 주세요.',409);
  const options=await supplierOptions(env,requestId),supplier=options.suppliers.find(s=>s.id===supplierId);
  if(!supplier)throw failure('이 제품과 연결된 공급업체를 선택해 주세요.',409);
@@ -66,7 +70,10 @@ async function supplierSend(request,env,input){
  if(contactId&&!contact)throw failure('현재 사용할 수 있는 담당자를 선택해 주세요.',409);
  const to=contact?contact.email:(supplier.companyEmail||supplier.email);
  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to||''))throw failure('수신 이메일을 확인해 주세요.',409);
- if(options.delivery)throw failure('이미 발송을 시도한 요청입니다. 중복 발송을 막기 위해 Gmail과 발송 상태를 확인해 주세요.',409);
+ if(followup){
+  if(options.delivery?.status!=='sent')throw failure('첫 발송 완료 후 추가 메일을 보낼 수 있습니다.',409);
+  if(options.followups.some(item=>['sending','unknown'].includes(item.status)))throw failure('이전 추가 발송 결과를 먼저 확인해 주세요. 중복 발송을 막기 위해 잠시 제한합니다.',409);
+ }else if(options.delivery)throw failure('이미 발송을 시도한 요청입니다. 중복 발송을 막기 위해 Gmail과 발송 상태를 확인해 주세요.',409);
  if(!env.PRIVATE_FILES)throw failure('사업자등록증 비공개 저장소를 연결해 주세요.',503);
  const certificate=await env.PRIVATE_FILES.get(certificateKey);
  if(!certificate)throw failure('사업자등록증을 먼저 업로드해 주세요.',409);
@@ -75,7 +82,7 @@ async function supplierSend(request,env,input){
  const draft=normalizeSupplierDraft(row,input.draft||{}),subject=headerSafe(draft.subject),html=renderSupplierMail(row,draft);
  const access=await gmailAccess(env);
  const at=new Date().toISOString();
- try{await env.DB.prepare("INSERT INTO mm_supplier_mail(request_id,supplier_id,recipient,status,updated_at) VALUES (?,?,?,'sending',?)").bind(requestId,supplierId,to,at).run();}
+ try{if(followup)await env.DB.prepare("INSERT INTO mm_supplier_mail_followups(id,request_id,supplier_id,recipient,status,updated_at) VALUES (?,?,?,?,'sending',?)").bind(sendId,requestId,supplierId,to,at).run();else await env.DB.prepare("INSERT INTO mm_supplier_mail(request_id,supplier_id,recipient,status,updated_at) VALUES (?,?,?,'sending',?)").bind(requestId,supplierId,to,at).run();}
  catch{throw failure('다른 발송 처리가 진행 중입니다. 화면을 새로고침해 주세요.',409);}
  try{
   const boundary='mm-'+crypto.randomUUID();
@@ -83,17 +90,17 @@ async function supplierSend(request,env,input){
   const mime=`From: =?UTF-8?B?${b64(enc.encode('(주)피지오컴퍼니'))}?= <${access.email}>\r\nTo: ${to}\r\nSubject: =?UTF-8?B?${b64(enc.encode(subject))}?=\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary="${boundary}"\r\n\r\n--${boundary}\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${wrapBase64(b64Large(enc.encode(html)))}\r\n--${boundary}\r\nContent-Type: image/jpeg; name*=UTF-8''${encodedName}\r\nContent-Disposition: attachment; filename*=UTF-8''${encodedName}\r\nContent-Transfer-Encoding: base64\r\n\r\n${wrapBase64(b64Large(certificateBytes))}\r\n--${boundary}--`;
   const raw=b64Large(enc.encode(mime)).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');
   const response=await fetch(gmailApi+'messages/send',{method:'POST',headers:{Authorization:'Bearer '+access.access_token,'Content-Type':'application/json'},body:JSON.stringify({raw}),signal:AbortSignal.timeout(20000)});
-  if(!response.ok){await env.DB.prepare("UPDATE mm_supplier_mail SET status='failed',updated_at=? WHERE request_id=?").bind(new Date().toISOString(),requestId).run();throw failure('Gmail이 발송을 거절했습니다. 연결 상태를 확인해 주세요.',502);}
+  if(!response.ok){await env.DB.prepare(`UPDATE ${followup?'mm_supplier_mail_followups':'mm_supplier_mail'} SET status='failed',updated_at=? WHERE ${followup?'id':'request_id'}=?`).bind(new Date().toISOString(),sendId).run();throw failure('Gmail이 발송을 거절했습니다. 연결 상태를 확인해 주세요.',502);}
   const result=await response.json();if(!result.id)throw Error('Gmail 발송 확인 ID 없음');
   const sentAt=new Date().toISOString();await env.DB.batch([
-   env.DB.prepare("UPDATE mm_supplier_mail SET status='sent',gmail_id=?,sent_at=?,updated_at=? WHERE request_id=?").bind(result.id,sentAt,sentAt,requestId),
-   env.DB.prepare('UPDATE mm_requests SET stage=1,updated_at=? WHERE id=? AND stage=0').bind(sentAt,requestId),
-   env.DB.prepare('INSERT INTO mm_request_events VALUES (?,?,?,?)').bind(crypto.randomUUID(),requestId,'공급업체 이메일 발송',sentAt)
+   env.DB.prepare(`UPDATE ${followup?'mm_supplier_mail_followups':'mm_supplier_mail'} SET status='sent',gmail_id=?,sent_at=?,updated_at=? WHERE ${followup?'id':'request_id'}=?`).bind(result.id,sentAt,sentAt,sendId),
+   ...(!followup?[env.DB.prepare('UPDATE mm_requests SET stage=1,updated_at=? WHERE id=? AND stage=0').bind(sentAt,requestId)]:[]),
+   env.DB.prepare('INSERT INTO mm_request_events VALUES (?,?,?,?)').bind(crypto.randomUUID(),requestId,followup?'공급업체 추가 이메일 발송':'공급업체 이메일 발송',sentAt)
   ]);
-  return {status:'sent',recipient:to,sentAt};
+  return {status:'sent',recipient:to,sentAt,followup};
  }catch(error){
-  const current=await env.DB.prepare('SELECT status FROM mm_supplier_mail WHERE request_id=?').bind(requestId).first();
-  if(current?.status==='sending')await env.DB.prepare("UPDATE mm_supplier_mail SET status='unknown',updated_at=? WHERE request_id=?").bind(new Date().toISOString(),requestId).run();
+  const current=await env.DB.prepare(`SELECT status FROM ${followup?'mm_supplier_mail_followups':'mm_supplier_mail'} WHERE ${followup?'id':'request_id'}=?`).bind(sendId).first();
+  if(current?.status==='sending')await env.DB.prepare(`UPDATE ${followup?'mm_supplier_mail_followups':'mm_supplier_mail'} SET status='unknown',updated_at=? WHERE ${followup?'id':'request_id'}=?`).bind(new Date().toISOString(),sendId).run();
   throw error.status?error:failure('발송 결과를 확인하지 못했습니다. 중복 발송을 피하려면 Gmail 보낸메일함을 먼저 확인해 주세요.',503);
  }
 }

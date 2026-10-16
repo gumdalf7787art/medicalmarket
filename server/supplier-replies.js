@@ -31,17 +31,21 @@ async function replySchema(env){
   env.DB.prepare('CREATE INDEX IF NOT EXISTS mm_supplier_replies_request ON mm_supplier_replies(request_id,received_at)')
  ]);
 }
-async function deliveries(env,requestId){
+async function deliveries(env,requestId,includeFollowups=false){
  const clause=requestId?'AND m.request_id=?':'';
  const rows=await env.DB.prepare(`SELECT m.request_id,m.supplier_id,m.recipient,m.status,m.gmail_id,m.sent_at,r.payload,r.stage,r.cancelled
   FROM mm_supplier_mail m JOIN mm_requests r ON r.id=m.request_id
   WHERE m.status='sent' ${clause} ORDER BY m.sent_at DESC LIMIT 100`).bind(...(requestId?[requestId]:[])).all();
- return rows.results;
+ if(!includeFollowups)return rows.results;
+ const additional=await env.DB.prepare(`SELECT m.request_id,m.supplier_id,m.recipient,m.status,m.gmail_id,m.sent_at,r.payload,r.stage,r.cancelled
+  FROM mm_supplier_mail_followups m JOIN mm_requests r ON r.id=m.request_id
+  WHERE m.status='sent' ${clause} ORDER BY m.sent_at DESC LIMIT 100`).bind(...(requestId?[requestId]:[])).all();
+ return [...rows.results,...additional.results].sort((a,b)=>String(b.sent_at).localeCompare(String(a.sent_at)));
 }
 async function sync(env,requestId){
- const rows=await deliveries(env,requestId),access=await gmailAccess(env);
+ const rows=await deliveries(env,requestId,true),access=await gmailAccess(env);
  let linked=0,scanned=0,failed=0;
- for(const row of rows.slice(0,requestId?1:20)){
+ for(const row of rows.slice(0,20)){
   if(!messageIdPattern.test(row.gmail_id)){failed++;continue;}
   try{
    const sent=await gmailGet(access,'messages/'+encodeURIComponent(row.gmail_id)+'?format=minimal');
@@ -68,8 +72,8 @@ async function sync(env,requestId){
    }
   }catch(error){failed++;if(requestId)throw error.status?error:failure('이 요청의 Gmail 발송 내역을 확인하지 못했습니다.',502);}
  }
- if(failed&&failed===Math.min(rows.length,requestId?1:20))throw failure('Gmail 발송 내역을 확인하지 못했습니다. 계정 연결을 확인해 주세요.',502);
- return {linked,scanned,checked:Math.min(rows.length,requestId?1:20),failed};
+ if(failed&&failed===Math.min(rows.length,20))throw failure('Gmail 발송 내역을 확인하지 못했습니다. 계정 연결을 확인해 주세요.',502);
+ return {linked,scanned,checked:Math.min(rows.length,20),failed};
 }
 async function listing(env,requestId){
  const rows=await deliveries(env,requestId);
