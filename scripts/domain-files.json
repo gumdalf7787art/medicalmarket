@@ -20,6 +20,7 @@
   "browse-performance.js",
   "auth-ui.js",
   "member-ui.js",
+  "cloud-replies-ui.js",
   "app.js",
   "product-import.js"
 ]

@@ -53,5 +53,15 @@ test('request-linked supplier contact sends after per-request confirmation even 
   assert.equal((await invoke(mail,'mail','supplier-send',reviewedSend,operatorCookie)).status,409);assert.equal(sent,1);
   const latest=(await (await invoke(mail,'mail',optionsPath,undefined,operatorCookie)).json());assert.equal(latest.delivery.status,'sent');assert.equal(latest.requestStage,1);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM mm_supplier_mail').get().n,1);
+  assert.equal((await invoke(mail,'mail','supplier-replies?requestId='+requestId,undefined,buyerCookie)).status,401);
+  const replyText=btoa(String.fromCharCode(...new TextEncoder().encode('단가는 100만원입니다.')));
+  const replyMessage={id:'reply-123',threadId:'thread-123',internalDate:String(Date.now()+1000),payload:{headers:[{name:'From',value:'담당자 <supplier@example.test>'},{name:'Subject',value:'Re: 공급 단가 문의'}],parts:[{mimeType:'text/plain',body:{data:replyText}},{filename:'estimate.pdf',body:{attachmentId:'file-123',size:9}}]}};
+  globalThis.fetch=async url=>{const path=String(url);if(path.includes('/messages/gmail-123?'))return Response.json({id:'gmail-123',threadId:'thread-123'});if(path.includes('/threads/thread-123?'))return Response.json({messages:[{id:'gmail-123',labelIds:['SENT']},{...replyMessage,id:'wrong-123',payload:{headers:[{name:'From',value:'other@example.test'}]}},replyMessage]});if(path.includes('/attachments/file-123'))return Response.json({data:'JVBERi0xLjQ',size:9});throw Error(path);};
+  const sync=await invoke(mail,'mail','supplier-replies/sync',{requestId},operatorCookie);assert.equal(sync.status,200);assert.equal((await sync.json()).linked,1);
+  assert.equal((await (await invoke(mail,'mail','supplier-replies/sync',{requestId},operatorCookie)).json()).linked,0);
+  const linked=(await (await invoke(mail,'mail','supplier-replies?requestId='+requestId,undefined,operatorCookie)).json()).requests[0];assert.equal(linked.replies.length,1);assert.match(linked.replies[0].text,/100만원/);assert.equal(linked.replies[0].files[0].name,'estimate.pdf');
+  assert.equal(db.prepare('SELECT stage FROM mm_requests WHERE id=?').get(requestId).stage,2);
+  const file=await invoke(mail,'mail','supplier-replies/file?'+new URLSearchParams({requestId,replyId:'reply-123',fileId:'file-123'}),undefined,operatorCookie);assert.equal(file.status,200);assert.equal(file.headers.get('content-type'),'application/octet-stream');assert.equal(await file.text(),'%PDF-1.4');
+  assert.equal((await invoke(mail,'mail','supplier-replies/file?'+new URLSearchParams({requestId,replyId:'reply-123',fileId:'wrong-file'}),undefined,operatorCookie)).status,404);
  }finally{globalThis.fetch=originalFetch;db.close();}
 });

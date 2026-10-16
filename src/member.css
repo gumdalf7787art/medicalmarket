@@ -31,4 +31,12 @@ body.is-member{background:#f4f6fa}body.is-member #medicalmarket-root>header,body
 .cloud-supplier-attachment input{display:block;margin-top:5px}
 .cloud-supplier-final-send{background:#2865d9!important;color:#fff!important;border-color:#2865d9!important;font-weight:700!important}
 .cloud-supplier-final-send:disabled{background:#e5e9f0!important;color:#8793a5!important;border-color:#d7dee8!important}
+.cloud-reply-case,.cloud-supplier-replies{margin-top:20px}
+.cloud-reply-message{border-top:1px solid #e1e7f1;padding:20px 0}
+.cloud-reply-message h3{font-size:16px;margin:0 0 6px}
+.cloud-reply-message p,.cloud-reply-case p{color:#71829b;font-size:13px}
+.cloud-reply-body{white-space:pre-wrap;overflow-wrap:anywhere;font-family:inherit;font-size:13px;line-height:1.7;background:#f5f7fb;border:1px solid #e1e7f1;border-radius:9px;padding:16px;max-height:500px;overflow:auto}
+.cloud-reply-files{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:13px}
+.cloud-reply-files a{display:inline-block;border:1px solid #ccdaf0;border-radius:7px;padding:9px 12px;color:#245aa9;background:#f8fbff}
+.cloud-reply-count{font-weight:700;color:#245aa9!important}
 @media(max-width:950px){.cloud-supplier-compose-grid{grid-template-columns:1fr}}

@@ -22,7 +22,7 @@ const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<
 const headerSafe=value=>String(value??'').replace(/[\r\n]+/g,' ').trim().slice(0,200);
 const b64Large=bytes=>{let out='';for(let i=0;i<bytes.length;i+=12288)out+=btoa(String.fromCharCode(...bytes.subarray(i,i+12288)));return out;};
 const wrapBase64=value=>value.match(/.{1,76}/g)?.join('\r\n')||'';
-async function supplierMailSchema(env){
+export async function supplierMailSchema(env){
  await memberSchema(env);await supplierSchema(env);
  await env.DB.prepare("CREATE TABLE IF NOT EXISTS mm_supplier_mail(request_id TEXT PRIMARY KEY,supplier_id TEXT NOT NULL,recipient TEXT NOT NULL,status TEXT NOT NULL,gmail_id TEXT NOT NULL DEFAULT '',sent_at TEXT,updated_at TEXT NOT NULL)").run();
 }
@@ -180,6 +180,10 @@ export async function gmailAction({request,env}){
  if(request.method==='POST'&&path==='supplier-send'){
   await supplierMailSchema(env);
   return json(await supplierSend(request,env,await bodyJson(request,8192)));
+ }
+ if(path==='supplier-replies'||path==='supplier-replies/sync'||path==='supplier-replies/file'){
+  const {supplierRepliesAction}=await import('./supplier-replies.js');
+  return supplierRepliesAction({request,env,path});
  }
  throw failure('이 메일 기능은 아직 클라우드 연결 작업 중입니다.',501);
 }
