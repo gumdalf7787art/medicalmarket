@@ -11,13 +11,16 @@ export async function memberSchema(env){await env.DB.batch([
  env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_customer_quotes(request_id TEXT PRIMARY KEY,payload TEXT NOT NULL,pdf_key TEXT NOT NULL,issued_at TEXT NOT NULL,viewed_at TEXT)'),
  env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_request_events(id TEXT PRIMARY KEY,request_id TEXT NOT NULL,title TEXT NOT NULL,at TEXT NOT NULL)'),
  env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_request_admin_events(id TEXT PRIMARY KEY,request_id TEXT NOT NULL,operator_id TEXT,operator_name TEXT NOT NULL,action TEXT NOT NULL,at TEXT NOT NULL)'),
- env.DB.prepare('CREATE INDEX IF NOT EXISTS mm_request_admin_events_request ON mm_request_admin_events(request_id,at)')
+ env.DB.prepare('CREATE INDEX IF NOT EXISTS mm_request_admin_events_request ON mm_request_admin_events(request_id,at)'),
+ env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_supplier_replies(gmail_id TEXT PRIMARY KEY,request_id TEXT NOT NULL,thread_id TEXT NOT NULL,sender TEXT NOT NULL,subject TEXT NOT NULL,body TEXT NOT NULL,received_at TEXT NOT NULL,files_json TEXT NOT NULL,linked_at TEXT NOT NULL)'),
+ env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_supplier_reply_seen(gmail_id TEXT PRIMARY KEY,seen_at TEXT NOT NULL)')
 ]);}
 function profile(data){const p={hospital:text(data.hospital,80),email:emailValue(data.email),phone:text(data.phone,20),province:text(data.province,40),district:text(data.district,40)};if(!p.hospital||!p.province||!p.district||!/^[0-9+() -]{8,20}$/.test(p.phone))throw failure('병원명·지역·연락처를 확인해 주세요.');return p;}
 const event=(env,id,title,at)=>env.DB.prepare('INSERT INTO mm_request_events VALUES (?,?,?,?)').bind(crypto.randomUUID(),id,title,at);
 const adminEvent=(env,id,operator,action,at)=>env.DB.prepare('INSERT INTO mm_request_admin_events VALUES (?,?,?,?,?,?)').bind(crypto.randomUUID(),id,operator?.id||null,text(operator?.name,80)||'운영자',action,at);
 async function record(env,id,user,admin=false){const row=await env.DB.prepare('SELECT * FROM mm_requests WHERE id=?'+(admin?'':' AND user_id=?')).bind(...(admin?[id]:[id,user.id])).first();if(!row)throw failure('요청을 찾을 수 없습니다.',404);return row;}
-function publicRequest(row){return {...JSON.parse(row.payload),id:row.id,stage:row.stage,cancelled:!!row.cancelled,createdAt:row.created_at,updatedAt:row.updated_at,hasQuote:!!row.issued_at,issuedAt:row.issued_at||null,unread:!!row.issued_at&&!row.viewed_at};}
+function publicRequest(row){return {...JSON.parse(row.payload),id:row.id,stage:row.stage,cancelled:!!row.cancelled,createdAt:row.created_at,updatedAt:row.updated_at,hasQuote:!!row.issued_at,issuedAt:row.issued_at||null,unread:!!row.issued_at&&!row.viewed_at,...(row.supplier_reply_unread===undefined?{}:{supplierReplyUnread:Number(row.supplier_reply_unread||0)})};}
+const supplierReplyUnreadSql="(SELECT COUNT(*) FROM mm_supplier_replies sr LEFT JOIN mm_supplier_reply_seen ss ON ss.gmail_id=sr.gmail_id WHERE sr.request_id=r.id AND ss.gmail_id IS NULL) AS supplier_reply_unread";
 export async function memberAction({request,env,params}){
  const path=Array.isArray(params.path)?params.path: String(params.path||'').split('/');const [action,id]=path;
  const admin=action==='admin';let user;
@@ -27,8 +30,8 @@ export async function memberAction({request,env,params}){
  if(request.method==='GET'){
   if(admin&&id==='overview'){
    const counts=await env.DB.prepare('SELECT COUNT(*) AS total,COALESCE(SUM(CASE WHEN cancelled=1 THEN 1 ELSE 0 END),0) AS cancelled,COALESCE(SUM(CASE WHEN cancelled=0 AND stage=0 THEN 1 ELSE 0 END),0) AS received,COALESCE(SUM(CASE WHEN cancelled=0 AND stage=1 THEN 1 ELSE 0 END),0) AS supplier,COALESCE(SUM(CASE WHEN cancelled=0 AND stage=2 THEN 1 ELSE 0 END),0) AS preparing,COALESCE(SUM(CASE WHEN cancelled=0 AND stage=3 THEN 1 ELSE 0 END),0) AS published FROM mm_requests').first();
-   const recent=await env.DB.prepare('SELECT r.*,q.issued_at,q.viewed_at FROM mm_requests r LEFT JOIN mm_customer_quotes q ON q.request_id=r.id ORDER BY r.created_at DESC LIMIT 5').all();
-   const pending=await env.DB.prepare('SELECT r.*,q.issued_at,q.viewed_at FROM mm_requests r LEFT JOIN mm_customer_quotes q ON q.request_id=r.id WHERE r.cancelled=0 AND r.stage<3 ORDER BY r.stage ASC,r.created_at ASC LIMIT 5').all();
+   const recent=await env.DB.prepare('SELECT r.*,q.issued_at,q.viewed_at,'+supplierReplyUnreadSql+' FROM mm_requests r LEFT JOIN mm_customer_quotes q ON q.request_id=r.id ORDER BY r.created_at DESC LIMIT 5').all();
+   const pending=await env.DB.prepare('SELECT r.*,q.issued_at,q.viewed_at,'+supplierReplyUnreadSql+' FROM mm_requests r LEFT JOIN mm_customer_quotes q ON q.request_id=r.id WHERE r.cancelled=0 AND r.stage<3 ORDER BY r.stage ASC,r.created_at ASC LIMIT 5').all();
    return json({counts,recent:recent.results.map(publicRequest),pending:pending.results.map(publicRequest)});
   }
   if(action==='summary'){
@@ -46,7 +49,7 @@ export async function memberAction({request,env,params}){
    if(quotes)where+=' AND q.request_id IS NOT NULL';
    const join=' FROM mm_requests r LEFT JOIN mm_customer_quotes q ON q.request_id=r.id WHERE '+where;
    const count=await env.DB.prepare('SELECT COUNT(*) AS total'+join).bind(...args).first();
-   const rows=await env.DB.prepare('SELECT r.*,q.issued_at,q.viewed_at'+join+' ORDER BY r.created_at DESC LIMIT 15 OFFSET ?').bind(...args,(page-1)*15).all();
+   const rows=await env.DB.prepare('SELECT r.*,q.issued_at,q.viewed_at'+(admin?','+supplierReplyUnreadSql:'')+join+' ORDER BY r.created_at DESC LIMIT 15 OFFSET ?').bind(...args,(page-1)*15).all();
    return json({requests:rows.results.map(publicRequest),total:count.total,page});
   }
   if(action==='requests'&&id||admin&&id){
@@ -54,7 +57,8 @@ export async function memberAction({request,env,params}){
    const events=await env.DB.prepare('SELECT title,at FROM mm_request_events WHERE request_id=? ORDER BY at').bind(id).all();
    if(q&&!admin)await env.DB.prepare('UPDATE mm_customer_quotes SET viewed_at=? WHERE request_id=? AND viewed_at IS NULL').bind(at,id).run();
    const adminEvents=admin?await env.DB.prepare('SELECT operator_name AS operatorName,action,at FROM mm_request_admin_events WHERE request_id=? ORDER BY at DESC').bind(id).all():null;
-   return json({request:publicRequest({...row,issued_at:q?.issued_at,viewed_at:q?.viewed_at}),quote:q?{...JSON.parse(q.payload),issuedAt:q.issued_at}:null,events:events.results,...(admin?{adminEvents:adminEvents.results}:{})});
+   const supplierReplyUnread=admin?await env.DB.prepare('SELECT COUNT(*) AS count FROM mm_supplier_replies sr LEFT JOIN mm_supplier_reply_seen ss ON ss.gmail_id=sr.gmail_id WHERE sr.request_id=? AND ss.gmail_id IS NULL').bind(id).first():null;
+   return json({request:publicRequest({...row,issued_at:q?.issued_at,viewed_at:q?.viewed_at,...(admin?{supplier_reply_unread:supplierReplyUnread.count}:{})}),quote:q?{...JSON.parse(q.payload),issuedAt:q.issued_at}:null,events:events.results,...(admin?{adminEvents:adminEvents.results}:{})});
   }
   if(action==='pdf'&&id){await record(env,id,user);const q=await env.DB.prepare('SELECT pdf_key FROM mm_customer_quotes WHERE request_id=?').bind(id).first();if(!q||!env.PRIVATE_FILES)throw failure('견적서 파일을 찾을 수 없습니다.',404);const file=await env.PRIVATE_FILES.get(q.pdf_key);if(!file)throw failure('파일을 찾을 수 없습니다.',404);return new Response(file.body,{headers:{'Content-Type':'application/pdf','Content-Disposition':'attachment; filename="quote-'+id+'.pdf"','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});}
   throw failure('요청 경로를 확인해 주세요.',404);

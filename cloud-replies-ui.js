@@ -5,7 +5,7 @@ async function cloudReplyRefreshSummary(){
   const response=await fetch('/api/mail/supplier-replies/summary',{credentials:'same-origin',cache:'no-store'});
   if(!response.ok)return;
   const data=await response.json(),next=Number(data.unread||0);
-  if(next!==cloudReplyUnread){cloudReplyUnread=next;if(location.hash.startsWith('#ops'))render();}
+  if(next!==cloudReplyUnread){cloudReplyUnread=next;cloudReplyCache.clear();for(const key of memberCache.keys())if(key.startsWith('admin'))memberCache.delete(key);if(location.hash.startsWith('#ops'))render();}
  }catch{/* A temporary connection error must not interrupt other admin work. */}
 }
 async function cloudReplyAutoSync(){
@@ -43,7 +43,7 @@ async function cloudReplyLoad(id=''){
  }catch(error){cloudReplyCache.set(key,{error:error.message});}
  finally{cloudReplyLoading.delete(key);if(location.hash.startsWith('#ops/requests?id='+id)||location.hash==='#ops/replies'||location.hash.startsWith('#ops/attention'))render();}
 }
-function cloudReplyItems(item){return item.replies.map(reply=>`<article class="cloud-reply-message ${reply.seen?'':'cloud-reply-new'}"><div class="section-head"><div><h3>${reply.seen?'':'<span class="cloud-reply-new-label">새 회신</span> '}${e(reply.subject||'(제목 없음)')}</h3><p>${e(reply.sender)} · ${e(new Date(reply.receivedAt).toLocaleString('ko-KR'))}</p></div>${reply.seen?'':`<button type="button" data-cloud-reply-seen="${e(reply.id)}">확인 완료</button>`}</div><pre class="cloud-reply-body">${e(reply.text||'텍스트 본문이 없습니다. Gmail에서 원본을 확인해 주세요.')}</pre>${reply.files.length?`<div class="cloud-reply-files"><b>첨부파일</b>${reply.files.map(file=>file.size>8*1024*1024?`<span>${e(file.name)} · 8MB 초과, Gmail에서 확인</span>`:`<a href="/api/mail/supplier-replies/file?${new URLSearchParams({requestId:item.requestId,replyId:reply.id,fileId:file.id})}">↓ ${e(file.name)} (${Math.ceil(file.size/1024)}KB)</a>`).join('')}</div>`:'<p class="member-help">첨부파일 없음</p>'}</article>`).join('');}
+function cloudReplyItems(item){return item.replies.map(reply=>`<article class="cloud-reply-message ${reply.seen?'':'cloud-reply-new'}"><div class="section-head"><div><h3>${reply.seen?'':'<span class="cloud-reply-new-label">새 회신</span> '}${e(reply.subject||'(제목 없음)')}</h3><p>${e(reply.sender)} · ${e(new Date(reply.receivedAt).toLocaleString('ko-KR'))}</p></div>${reply.seen?'':`<button type="button" data-cloud-reply-seen="${e(reply.id)}" data-cloud-reply-request="${e(item.requestId)}">확인 완료</button>`}</div><pre class="cloud-reply-body">${e(reply.text||'텍스트 본문이 없습니다. Gmail에서 원본을 확인해 주세요.')}</pre>${reply.files.length?`<div class="cloud-reply-files"><b>첨부파일</b>${reply.files.map(file=>file.size>8*1024*1024?`<span>${e(file.name)} · 8MB 초과, Gmail에서 확인</span>`:`<a href="/api/mail/supplier-replies/file?${new URLSearchParams({requestId:item.requestId,replyId:reply.id,fileId:file.id})}">↓ ${e(file.name)} (${Math.ceil(file.size/1024)}KB)</a>`).join('')}</div>`:'<p class="member-help">첨부파일 없음</p>'}</article>`).join('');}
 function cloudSupplierReplyPanel(id){
  const key=id,result=cloudReplyCache.get(key);if(!result&&!cloudReplyLoading.has(key))queueMicrotask(()=>cloudReplyLoad(id));
  const notice=cloudReplyNotice.get(key);
@@ -57,11 +57,13 @@ function cloudSupplierReplies(mode='replies'){
 }
 document.addEventListener('click',async event=>{
  const button=event.target.closest('[data-cloud-reply-seen]');if(!button)return;
- const replyId=button.dataset.cloudReplySeen;button.disabled=true;
+ const replyId=button.dataset.cloudReplySeen,requestId=button.dataset.cloudReplyRequest;button.disabled=true;
  try{
   const response=await fetch('/api/mail/supplier-replies/seen',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({replyId})});
   const data=await response.json();if(!response.ok)throw Error(data.error||'확인 상태를 저장하지 못했습니다.');
   for(const result of cloudReplyCache.values())for(const item of result.requests||[])for(const reply of item.replies||[])if(reply.id===replyId)reply.seen=true;
+  for(const [key,result] of memberCache)if(key.startsWith('admin'))for(const row of [...(result.requests||[]),...(result.recent||[]),...(result.pending||[]),...(result.request?[result.request]:[])])if(row.id===requestId)row.supplierReplyUnread=Math.max(0,Number(row.supplierReplyUnread||0)-1);
+  cloudReplyUnread=Math.max(0,cloudReplyUnread-1);
   await cloudReplyRefreshSummary();render();
  }catch(error){button.disabled=false;cloudReplyNotice.set('all',error.message);render();}
 });
