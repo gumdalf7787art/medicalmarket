@@ -35,14 +35,15 @@ test('request-linked supplier contact sends after per-request confirmation even 
  const reviewedSend={...send,reviewed:true};
  assert.equal((await invoke(mail,'mail','supplier-send',reviewedSend,operatorCookie)).status,409);
  db.prepare('INSERT INTO mm_gmail_connection VALUES (1,?,?,?)').run('sender@example.test',await seal(env,{access_token:'test-access',refresh_token:'test-refresh',expires:Date.now()+3600000}),new Date().toISOString());
+ assert.equal((await invoke(mail,'mail','supplier-send',reviewedSend,operatorCookie)).status,409);
  const preview=(await (await invoke(mail,'mail','supplier-preview',{requestId,supplierId,contactId:'contact-1'},operatorCookie)).json());
  assert.match(preview.html,/병원명/);assert.match(preview.html,/시험 의원/);assert.match(preview.html,/관리번호/);assert.match(preview.html,/내부 관리용/);assert.match(preview.html,/736-81-01238/);
- assert.ok(!preview.subject.includes(requestId));assert.ok(!preview.subject.includes('메디컬마켓'));
+ assert.ok(preview.subject.includes('(주)피지오컴퍼니'));assert.ok(!preview.subject.includes(requestId));assert.ok(!preview.subject.includes('메디컬마켓'));
  assert.equal(preview.certificateReady,false);
  const certificate=new Uint8Array(256);certificate[0]=0xff;certificate[1]=0xd8;certificate[254]=0xff;certificate[255]=0xd9;
  const upload=await mail({env,params:{path:['supplier-certificate']},request:new Request('https://example.test/api/mail/supplier-certificate',{method:'POST',headers:{Origin:'https://example.test',Cookie:operatorCookie,'CF-Connecting-IP':'upload-ip'},body:certificate})});assert.equal(upload.status,200);
  assert.equal(privateFiles.size,1);
- const edited={...preview.draft,subject:'[㈜피지오컴퍼니] 수정한 제목',request:'수정한 요청 문구입니다.\n단가를 회신해 주세요.',hospital:'수정 병원'};
+ const edited={...preview.draft,subject:'[(주)피지오컴퍼니] 수정한 제목',request:'수정한 요청 문구입니다.\n단가를 회신해 주세요.',hospital:'수정 병원'};
  const editedPreview=(await (await invoke(mail,'mail','supplier-preview',{requestId,supplierId,contactId:'contact-1',draft:edited},operatorCookie)).json());
  assert.equal(editedPreview.certificateReady,true);assert.match(editedPreview.html,/수정 병원/);assert.match(editedPreview.html,/수정한 요청 문구/);
  const originalFetch=globalThis.fetch;let sent=0;

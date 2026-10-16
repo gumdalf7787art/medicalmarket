@@ -4,7 +4,7 @@ export const certificateKey='supplier-mail/physiocompany-business-registration.j
 export const certificateName='(주)피지오컴퍼니 사업자등록증.jpg';
 export function defaultSupplierDraft(row){
  const p=row.payload.product||{},profile=row.payload.profile||{};
- return {subject:`[㈜피지오컴퍼니] ${p.name||'의료기기'} 공급 단가 문의`,
+ return {subject:`[(주)피지오컴퍼니] ${p.name||'의료기기'} 공급 단가 문의`,
   greeting:'안녕하세요. (주)피지오컴퍼니입니다.',
   introduction:'아래 제품의 공급 단가를 문의드립니다.',
   product:p.name||'의료기기',model:p.model||'미등록',quantity:`${Number(row.payload.qty)||1}대`,
