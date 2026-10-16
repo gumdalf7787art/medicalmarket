@@ -35,6 +35,7 @@ let browser;
    supplier={...body,id:'supplier-1'};data={supplier};
   }
   else if(p==='/api/suppliers')data={suppliers:supplier?[supplier]:[],total:supplier?1:0,page:1};
+  else if(p==='/api/mail/supplier-options')data={suppliers:[{id:'linked-supplier',company:'시험 제조사',email:'supplier@example.test',phone:'02-0000-0000',companyEmail:'',active:false,classification:'candidate',reviewStatus:'needs_review',contacts:[{id:'staff-1',name:'견적 담당자',email:'staff@example.test',phone:'02-1111-1111',mobile:'010-1111-1111'}]}],delivery:null,gmailEmail:'sender@example.test',product:record().product,qty:1,requestStage:stage,cancelled:false};
   else if(p==='/api/member/admin/overview')data={counts:{total:1,cancelled:0,received:stage===0?1:0,supplier:stage===1?1:0,preparing:0,published:0},recent:[record()],pending:[record()]};
   else if(p==='/api/member/admin/REQ-real-1'&&req.method()==='POST'){stage=req.postDataJSON().stage;data={ok:true};}
   else if(p==='/api/member/admin/REQ-real-1')data={request:record(),quote:null,events:[{title:'견적 요청 접수',at:'2026-10-16T01:00:00Z'}],adminEvents:stage?[{operatorName:'운영자',action:'진행 상태: 공급업체 확인 중',at:'2026-10-16T02:00:00Z'}]:[]};
@@ -57,6 +58,9 @@ let browser;
  await page.getByRole('heading',{name:'검색 결과'}).waitFor();
  await page.getByRole('link',{name:'REQ-real-1'}).first().click();
  await page.locator('form[data-member-stage]').waitFor();
+ await page.getByRole('button',{name:'제품 회사에 단가 문의'}).waitFor();
+ await page.getByText('견적 담당자',{exact:true}).waitFor();
+ assert.equal(await page.locator('[data-cloud-supplier-send]').isDisabled(),true);
  await page.locator('form[data-member-stage] select').selectOption('1');
  await page.locator('form[data-member-stage] button').click();
  await page.waitForFunction(()=>document.querySelectorAll('.member-progress .filled').length===2);

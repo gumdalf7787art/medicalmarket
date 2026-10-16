@@ -5,7 +5,7 @@ const field=(value,max)=>String(value??'').trim().slice(0,max);
 const optionalEmail=value=>value?emailValue(value):'';
 const now=()=>new Date().toISOString();
 
-async function supplierSchema(env){
+export async function supplierSchema(env){
   await schema(env);
   await env.DB.batch([
     env.DB.prepare("CREATE TABLE IF NOT EXISTS mm_suppliers (id TEXT PRIMARY KEY, company TEXT NOT NULL, contact_name TEXT NOT NULL DEFAULT '', email TEXT NOT NULL, phone TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),

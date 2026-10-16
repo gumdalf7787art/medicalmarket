@@ -1,5 +1,7 @@
 import {json,failure,requireAdmin,sameOrigin,limitedBody,bodyJson} from './cloud.js';
 import {authSchema,putToken,takeToken,random,digest,cookie,readCookie,siteOrigin,limit} from './auth.js';
+import {supplierSchema} from './suppliers.js';
+import {memberSchema} from './member.js';
 
 const scopes=['https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.send'];
 const callbackPath='/api/mail/oauth/callback';
@@ -15,6 +17,65 @@ export async function seal(env,value){const iv=crypto.getRandomValues(new Uint8A
 export async function unseal(env,value){const [iv,data]=value.split('.');return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:un64(iv),additionalData:enc.encode('mm_gmail_connection:1')},await key(env),un64(data))));}
 async function google(url,options={}){const response=await fetch(url,{...options,signal:AbortSignal.timeout(15000)});if(!response.ok)throw failure('Google 연결을 확인하지 못했습니다. 계정을 다시 연결해 주세요.',502);return response.json();}
 const gmailApi='https://gmail.googleapis.com/gmail/v1/users/me/';
+const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const headerSafe=value=>String(value??'').replace(/[\r\n]+/g,' ').trim().slice(0,200);
+async function supplierMailSchema(env){
+ await memberSchema(env);await supplierSchema(env);
+ await env.DB.prepare("CREATE TABLE IF NOT EXISTS mm_supplier_mail(request_id TEXT PRIMARY KEY,supplier_id TEXT NOT NULL,recipient TEXT NOT NULL,status TEXT NOT NULL,gmail_id TEXT NOT NULL DEFAULT '',sent_at TEXT,updated_at TEXT NOT NULL)").run();
+}
+async function supplierRequest(env,requestId){
+ if(!/^REQ-[a-f0-9-]{36}$/i.test(requestId))throw failure('견적 요청을 확인해 주세요.');
+ const row=await env.DB.prepare('SELECT * FROM mm_requests WHERE id=?').bind(requestId).first();
+ if(!row)throw failure('견적 요청을 찾을 수 없습니다.',404);
+ return {...row,payload:JSON.parse(row.payload)};
+}
+async function supplierOptions(env,requestId){
+ const row=await supplierRequest(env,requestId),productId=row.payload.product?.id;
+ const rows=await env.DB.prepare(`SELECT s.id,s.company,s.email,s.phone,s.active,d.classification,d.review_status,d.company_phone,d.company_email,d.contacts_json
+  FROM mm_suppliers s JOIN mm_supplier_products p ON p.supplier_id=s.id
+  LEFT JOIN mm_supplier_details d ON d.supplier_id=s.id WHERE p.product_id=? ORDER BY s.active DESC,s.company`).bind(productId).all();
+ const suppliers=rows.results.map(s=>({id:s.id,company:s.company,email:s.email,phone:s.company_phone||s.phone,companyEmail:s.company_email||'',active:!!s.active,classification:s.classification||'manual',reviewStatus:s.review_status||'needs_review',contacts:JSON.parse(s.contacts_json||'[]')}));
+ const delivery=await env.DB.prepare('SELECT supplier_id,recipient,status,gmail_id,sent_at FROM mm_supplier_mail WHERE request_id=?').bind(requestId).first();
+ const connection=await env.DB.prepare('SELECT email FROM mm_gmail_connection WHERE id=1').first();
+ return {suppliers,delivery:delivery?{supplierId:delivery.supplier_id,recipient:delivery.recipient,status:delivery.status,gmailId:delivery.gmail_id,sentAt:delivery.sent_at}:null,gmailEmail:connection?.email||'',product:row.payload.product,qty:row.payload.qty,requestStage:row.stage,cancelled:!!row.cancelled};
+}
+async function supplierSend(request,env,input){
+ await limit(request,env,'supplier-send',30);
+ const requestId=String(input.requestId||''),supplierId=String(input.supplierId||''),contactId=String(input.contactId||'');
+ const row=await supplierRequest(env,requestId);
+ if(row.cancelled||row.stage!==0)throw failure('접수 단계의 요청만 업체에 보낼 수 있습니다.',409);
+ const options=await supplierOptions(env,requestId),supplier=options.suppliers.find(s=>s.id===supplierId);
+ if(!supplier)throw failure('이 제품과 연결된 공급업체를 선택해 주세요.',409);
+ if(!supplier.active||(supplier.classification!=='manual'&&supplier.reviewStatus!=='confirmed'))throw failure('업체 연락처를 확인하고 사용 상태로 변경한 뒤 보내 주세요.',409);
+ const contact=contactId?supplier.contacts.find(c=>c.id===contactId&&!c.left&&!c.blocked):null;
+ if(contactId&&!contact)throw failure('현재 사용할 수 있는 담당자를 선택해 주세요.',409);
+ const to=contact?contact.email:(supplier.companyEmail||supplier.email);
+ if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to||''))throw failure('수신 이메일을 확인해 주세요.',409);
+ if(options.delivery)throw failure('이미 발송을 시도한 요청입니다. 중복 발송을 막기 위해 Gmail과 발송 상태를 확인해 주세요.',409);
+ const access=await gmailAccess(env);
+ const at=new Date().toISOString();
+ try{await env.DB.prepare("INSERT INTO mm_supplier_mail(request_id,supplier_id,recipient,status,updated_at) VALUES (?,?,?,'sending',?)").bind(requestId,supplierId,to,at).run();}
+ catch{throw failure('다른 발송 처리가 진행 중입니다. 화면을 새로고침해 주세요.',409);}
+ const p=row.payload.product||{},subject=headerSafe(`[메디컬마켓] 공급 단가 요청 · ${p.name||'의료기기'} · ${requestId}`);
+ const html=`<div style="font-family:Arial,sans-serif;line-height:1.75;color:#24324b;max-width:640px"><p>안녕하세요, ${escapeHtml(supplier.company)} 담당자님.</p><p>메디컬마켓에서 아래 제품의 공급 견적을 요청드립니다.</p><table style="border-collapse:collapse;width:100%"><tr><th align="left">제품</th><td>${escapeHtml(p.name)}</td></tr><tr><th align="left">모델</th><td>${escapeHtml(p.model||'미등록')}</td></tr><tr><th align="left">수량</th><td>${Number(row.payload.qty)||1}대</td></tr><tr><th align="left">납품 지역</th><td>${escapeHtml([row.payload.profile?.province,row.payload.profile?.district].filter(Boolean).join(' '))}</td></tr><tr><th align="left">요청번호</th><td>${escapeHtml(requestId)}</td></tr></table><p>공급 단가(부가세 별도), 배송·설치 비용, 예상 공급 일정을 회신해 주시면 감사하겠습니다.</p><p>감사합니다.<br>메디컬마켓 드림</p></div>`;
+ try{
+  const mime=`From: ${access.email}\r\nTo: ${to}\r\nSubject: =?UTF-8?B?${b64(enc.encode(subject))}?=\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${b64(enc.encode(html))}`;
+  const raw=b64(enc.encode(mime)).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');
+  const response=await fetch(gmailApi+'messages/send',{method:'POST',headers:{Authorization:'Bearer '+access.access_token,'Content-Type':'application/json'},body:JSON.stringify({raw}),signal:AbortSignal.timeout(20000)});
+  if(!response.ok){await env.DB.prepare("UPDATE mm_supplier_mail SET status='failed',updated_at=? WHERE request_id=?").bind(new Date().toISOString(),requestId).run();throw failure('Gmail이 발송을 거절했습니다. 연결 상태를 확인해 주세요.',502);}
+  const result=await response.json();if(!result.id)throw Error('Gmail 발송 확인 ID 없음');
+  const sentAt=new Date().toISOString();await env.DB.batch([
+   env.DB.prepare("UPDATE mm_supplier_mail SET status='sent',gmail_id=?,sent_at=?,updated_at=? WHERE request_id=?").bind(result.id,sentAt,sentAt,requestId),
+   env.DB.prepare('UPDATE mm_requests SET stage=1,updated_at=? WHERE id=? AND stage=0').bind(sentAt,requestId),
+   env.DB.prepare('INSERT INTO mm_request_events VALUES (?,?,?,?)').bind(crypto.randomUUID(),requestId,'공급업체 이메일 발송',sentAt)
+  ]);
+  return {status:'sent',recipient:to,sentAt};
+ }catch(error){
+  const current=await env.DB.prepare('SELECT status FROM mm_supplier_mail WHERE request_id=?').bind(requestId).first();
+  if(current?.status==='sending')await env.DB.prepare("UPDATE mm_supplier_mail SET status='unknown',updated_at=? WHERE request_id=?").bind(new Date().toISOString(),requestId).run();
+  throw error.status?error:failure('발송 결과를 확인하지 못했습니다. 중복 발송을 피하려면 Gmail 보낸메일함을 먼저 확인해 주세요.',503);
+ }
+}
 const decodeBase64=value=>{const raw=atob(String(value||'').replaceAll('-','+').replaceAll('_','/')+'='.repeat((4-String(value||'').length%4)%4));return new TextDecoder().decode(Uint8Array.from(raw,c=>c.charCodeAt(0)));};
 const header=(payload,name)=>payload.headers?.find(h=>h.name?.toLowerCase()===name)?.value||'';
 function bodyText(part){if(part.mimeType==='text/plain'&&part.body?.data)return decodeBase64(part.body.data);for(const child of part.parts||[]){const value=bodyText(child);if(value)return value;}if(part.mimeType==='text/html'&&part.body?.data)return decodeBase64(part.body.data).replace(/<[^>]*>/g,' ').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');return '';}
@@ -79,5 +140,13 @@ export async function gmailAction({request,env}){
   return new Response(null,{status:303,headers:{Location:gmailOrigin(request,env)+'/?gmail='+result+'#ops/mail','Set-Cookie':cookie('mm_gmail_oauth','',0),'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
  }
  if(request.method==='POST'&&path==='mailbox')return json(await mailbox(env,await bodyJson(request,8192)));
+ if(request.method==='GET'&&path==='supplier-options'){
+  await supplierMailSchema(env);
+  return json(await supplierOptions(env,new URL(request.url).searchParams.get('requestId')||''));
+ }
+ if(request.method==='POST'&&path==='supplier-send'){
+  await supplierMailSchema(env);
+  return json(await supplierSend(request,env,await bodyJson(request,8192)));
+ }
  throw failure('이 메일 기능은 아직 클라우드 연결 작업 중입니다.',501);
 }
