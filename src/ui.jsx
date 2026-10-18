@@ -106,7 +106,14 @@ function Application(props) {
       </AdminLayout>:<CustomerPage content={props.content}/>}
     </div></main>
     <div id="toast" role="status" aria-live="polite"/>
-    <footer>MEDICAL MARKET SEASON 2 <span><a href="/privacy.html">개인정보처리방침</a></span></footer>
+    <footer className="company-footer">
+      <div className="footer-grid">
+        <div className="footer-brand"><a href="#home">메디컬마켓<small>MEDICAL MARKET</small></a><p>다양한 의료장비를 살펴보고,<br/>간편하게 견적을 요청하세요.</p></div>
+        <nav aria-label="하단 이용 메뉴"><h3>이용 안내</h3><a href="#catalog">제품 검색</a><a href="#account">마이페이지</a><a href="#home-process">견적 요청 안내</a><a href="/privacy.html">개인정보처리방침</a></nav>
+        <div className="footer-contact"><h3>문의 안내</h3><a href="tel:0234724177" className="footer-phone">02-3472-4177</a><a href="mailto:gumdalf7787@gmail.com">gumdalf7787@gmail.com</a><p>Fax · 02-585-3083</p></div>
+      </div>
+      <div className="footer-company"><strong>메디컬마켓 · (주)피지오컴퍼니</strong><p>대표: 최영호 <span>사업자등록번호: 736-81-01238</span><br/>주소: 서울특별시 송파구 마천로 30, 상가에이동 127·128호(방이동)</p><small>© {new Date().getFullYear()} 메디컬마켓 · (주)피지오컴퍼니. All rights reserved.</small></div>
+    </footer>
   </>;
 }
 
