@@ -95,9 +95,12 @@ export function CustomerPage({ content }) { return <TemplateContent html={conten
 export function OperationsPage({ content }) { return <TemplateContent html={content}/>; }
 
 function Application(props) {
+  // Background product/session updates must not remount the home hero and
+  // restart its entrance animation. Form-heavy routes retain their reset key.
+  const pageKey=props.route==='home'||props.route.startsWith('home-')?'home':props.revision;
   return <>
     <SiteHeader route={props.route} favorites={props.favorites} authUser={props.authUser}/>
-    <main id="app"><div key={props.revision} style={{display:'contents'}} data-react-page={props.route}>
+    <main id="app"><div key={pageKey} style={{display:'contents'}} data-react-page={props.route}>
       {props.isAdmin?<AdminLayout page={props.adminPage} menus={props.menus} newRequests={props.newRequests} replyCount={props.replyCount}>
         <OperationsPage content={props.content}/>
       </AdminLayout>:<CustomerPage content={props.content}/>}
