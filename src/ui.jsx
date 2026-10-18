@@ -1,3 +1,4 @@
+import SearchInput from './search-input.jsx';
 import React, { useLayoutEffect, useEffect, useState, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
@@ -10,7 +11,7 @@ export function SiteHeader({ route, favorites, authUser }) {
   return <header className="site-header">
     <a href="#home" className="brand brand-logo" aria-label="메디컬마켓 홈"><img src="/assets/brand/medicalmarket-logo.png" alt="메디컬마켓 MEDICAL MARKET" width="2146" height="733" fetchPriority="high"/></a>
     <form id="header-search" className="header-search" role="search">
-      <input name="query" aria-label="제품 검색" placeholder="어떤 의료장비를 찾으세요?" maxLength={100}/>
+      <SearchInput name="query" aria-label="제품 검색" placeholder="어떤 의료장비를 찾으세요?"/>
       <button type="submit" aria-label="제품 검색 실행"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></button>
     </form>
     <div className="member-header">{authUser?.role==='admin'?<a href="#ops" className="ops-link">운영 화면 ↗</a>:null}<a href={authUser?"#account":"#auth/login"}>{authUser?"마이페이지":"로그인"}</a>{!authUser?<a href="#auth/signup">회원가입</a>:null}</div>
@@ -58,6 +59,7 @@ function TemplateContent({ html }) {
   const options={replace(node) {
     if(!node.attribs) return;
     const props=attributesToProps(node.attribs);
+    if(node.name==='input'&&node.attribs.id==='catalog-query')return <SearchInput {...props}/>;
     if(node.name==='img'&&node.attribs.loading==='lazy')return <DeferredImage props={props}/>;
     if(node.name==='script') return <></>;
     // React select uses defaultValue on the select rather than selected options.
