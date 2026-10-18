@@ -44,6 +44,8 @@ test('member data isolation, request lifecycle, quote and private PDF',async()=>
  assert.equal((await (await call(member,'requests/'+id,null,ac)).json()).adminEvents,undefined);
  overview=(await (await call(member,'admin/overview',null,oc)).json());
  assert.equal(overview.counts.received,0);assert.equal(overview.counts.preparing,1);
+ assert.equal((await (await call(member,'requests?stage=pending',null,ac)).json()).total,1);
+ assert.deepEqual((await (await call(member,'requests/'+id,null,ac)).json()).events.map(e=>e.title),['요청 접수']);
  assert.equal((await (await call(member,'admin?stage=2',null,oc)).json()).total,1);
  assert.equal((await call(member,'cancel/'+id,{},ac)).status,409);
  assert.equal((await call(member,'admin/'+id,{action:'stage',stage:0},oc)).status,400);
@@ -54,6 +56,8 @@ test('member data isolation, request lifecycle, quote and private PDF',async()=>
  assert.equal(overview.counts.published,1);assert.equal(overview.pending.length,0);
  assert.equal((await (await call(member,'summary',null,ac)).json()).counts.unread,1);
  const detail=(await (await call(member,'requests/'+id,null,ac)).json());
+ assert.deepEqual(detail.events.map(e=>e.title),['요청 접수','견적서 도착']);
+ assert.equal((await (await call(member,'requests?stage=pending',null,ac)).json()).total,0);
  assert.equal(detail.request.product.name,'진단 장비');assert.equal(detail.request.stage,3);assert.equal(detail.quote.total,231);assert.equal(detail.quote.pdf_key,undefined);
  assert.equal((await (await call(member,'summary',null,ac)).json()).counts.unread,0);
  const download=await call(member,'pdf/'+id,null,ac);assert.equal(download.status,200);assert.match(download.headers.get('content-type'),/pdf/);assert.match(download.headers.get('cache-control'),/no-store/);assert.equal(await download.text(),atob(pdf));

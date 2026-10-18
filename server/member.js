@@ -46,7 +46,8 @@ export async function memberAction({request,env,params}){
    const page=Math.max(1,Math.min(10000,Math.floor(Number(url.searchParams.get('page')))||1));const search=text(url.searchParams.get('q'),100);const stage=url.searchParams.get('stage');const quotes=url.searchParams.get('quotes')==='1';
    let where=admin?'1=1':'r.user_id=?',args=admin?[]:[user.id];
    if(search){where+=" AND (r.id LIKE ? OR json_extract(r.payload,'$.product.name') LIKE ? OR json_extract(r.payload,'$.profile.hospital') LIKE ?)";args.push('%'+search+'%','%'+search+'%','%'+search+'%');}
-   if(stage==='cancelled')where+=' AND r.cancelled=1';
+   if(!admin&&stage==='pending')where+=' AND r.stage<3 AND r.cancelled=0';
+   else if(stage==='cancelled')where+=' AND r.cancelled=1';
    else if(/^[0-3]$/.test(stage||'')){where+=' AND r.stage=? AND r.cancelled=0';args.push(Number(stage));}
    if(quotes)where+=' AND q.request_id IS NOT NULL';
    const join=' FROM mm_requests r LEFT JOIN mm_customer_quotes q ON q.request_id=r.id WHERE '+where;
@@ -60,7 +61,7 @@ export async function memberAction({request,env,params}){
    if(q&&!admin)await env.DB.prepare('UPDATE mm_customer_quotes SET viewed_at=? WHERE request_id=? AND viewed_at IS NULL').bind(at,id).run();
    const adminEvents=admin?await env.DB.prepare('SELECT operator_name AS operatorName,action,at FROM mm_request_admin_events WHERE request_id=? ORDER BY at DESC').bind(id).all():null;
    const supplierReplyUnread=admin?await env.DB.prepare('SELECT COUNT(*) AS count FROM mm_supplier_replies sr LEFT JOIN mm_supplier_reply_seen ss ON ss.gmail_id=sr.gmail_id WHERE sr.request_id=? AND ss.gmail_id IS NULL').bind(id).first():null;
-   return json({request:publicRequest({...row,issued_at:q?.issued_at,viewed_at:q?.viewed_at,...(admin?{supplier_reply_unread:supplierReplyUnread.count}:{})}),quote:q?{...JSON.parse(q.payload),issuedAt:q.issued_at}:null,events:events.results,...(admin?{adminEvents:adminEvents.results}:{})});
+   return json({request:publicRequest({...row,issued_at:q?.issued_at,viewed_at:q?.viewed_at,...(admin?{supplier_reply_unread:supplierReplyUnread.count}:{})}),quote:q?{...JSON.parse(q.payload),issuedAt:q.issued_at}:null,events:admin?events.results:[{title:'요청 접수',at:row.created_at},...(q?[{title:'견적서 도착',at:q.issued_at}]:[]),...(row.cancelled?[{title:'요청 취소',at:row.updated_at}]:[])],...(admin?{adminEvents:adminEvents.results}:{})});
   }
   if((action==='pdf'||action==='admin-pdf')&&id){await record(env,id,user,admin);const q=await env.DB.prepare('SELECT pdf_key FROM mm_customer_quotes WHERE request_id=?').bind(id).first();if(!q||!env.PRIVATE_FILES)throw failure('견적서 파일을 찾을 수 없습니다.',404);const file=await env.PRIVATE_FILES.get(q.pdf_key);if(!file)throw failure('파일을 찾을 수 없습니다.',404);const disposition=admin&&url.searchParams.get('download')!=='1'?'inline':'attachment';return new Response(file.body,{headers:{'Content-Type':'application/pdf','Content-Disposition':disposition+'; filename="quote-'+id+'.pdf"','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});}
   throw failure('요청 경로를 확인해 주세요.',404);
