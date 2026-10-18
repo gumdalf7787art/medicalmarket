@@ -1,3 +1,4 @@
+import {productSearchSql} from '../../../server/product-search.js';
 import sanitizeHtml from 'sanitize-html';
 import {json,bodyJson,sameOrigin,authenticated,requireAdmin,schema,safeHandler,failure} from '../../../server/cloud.js';
 const imageUrl=value=> typeof value==='string'&&value.length<=2048&&(/^(https:\/\/[^\s"<>]+|assets\/[\w./%-]+|\/media\/[\w.-]+)$/.test(value))&&!value.includes('..');
@@ -32,8 +33,9 @@ export const onRequestGet=safeHandler(async({request,env})=>{
     const page=Math.max(1,Math.min(100000,Number.parseInt(params.get('page'))||1));
     const category=params.get('category')||'',q=(params.get('q')||'').slice(0,100).toLowerCase();
     if(category&&!/^([a-z0-9]{2}){1,3}$/.test(category))throw failure('제품 분류를 확인해 주세요.');
-    const where="published=1 AND deleted=0 AND (?='' OR EXISTS(SELECT 1 FROM json_each(json_extract(payload,'$.categoryIds')) WHERE substr(value,1,length(?))=?)) AND instr(lower(json_extract(payload,'$.name')||' '||json_extract(payload,'$.model')),?)>0";
-    const args=[category,category,category,q];
+    const search=productSearchSql(q);
+    const where="published=1 AND deleted=0 AND (?='' OR EXISTS(SELECT 1 FROM json_each(json_extract(payload,'$.categoryIds')) WHERE substr(value,1,length(?))=?)) AND "+search.sql;
+    const args=[category,category,category,...search.args];
     const count=await env.DB.prepare('SELECT count(*) AS total FROM mm_products WHERE '+where).bind(...args).first();
     const pages=Math.max(1,Math.ceil(count.total/15)),current=Math.min(page,pages);
     const result=await env.DB.prepare("SELECT payload FROM mm_products WHERE "+where+" ORDER BY (coalesce(json_extract(payload,'$.image'),'')!='') DESC,id LIMIT 15 OFFSET ?").bind(...args,(current-1)*15).all();

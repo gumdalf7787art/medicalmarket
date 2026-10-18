@@ -42,7 +42,7 @@ function render(){
   if(route.startsWith('home-'))requestAnimationFrame(()=>document.getElementById(route)?.scrollIntoView({block:'start'}));
 }
 ` + code.slice(end);
-      return "import { renderApplication } from '/src/ui.jsx';\nimport { readQuoteAttachment, makeQuotePdf } from '/src/quote-tools.js';\nimport { renderCustomerQuoteEmail, customerEmailSubject } from '/server/customer-quote.js';\n" + code;
+      return "import { matchesProductSearch } from '/server/product-search.js';\nimport { renderApplication } from '/src/ui.jsx';\nimport { readQuoteAttachment, makeQuotePdf } from '/src/quote-tools.js';\nimport { renderCustomerQuoteEmail, customerEmailSubject } from '/server/customer-quote.js';\n" + code;
     },
   };
 }
