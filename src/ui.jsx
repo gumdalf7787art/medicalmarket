@@ -7,14 +7,12 @@ let root;
 let revision = 0;
 
 export function SiteHeader({ route, favorites, authUser }) {
-  return <header>
+  return <header className="site-header">
     <a href="#home" className="brand"><span>메디컬마켓<small>MEDICAL MARKET</small></span></a>
-    <nav aria-label="주 메뉴">
-      <a className={route==='home'?'active':''} href="#home">홈</a>
-      <a className={route==='catalog'?'active':''} href="#catalog">제품 검색</a>
-      <a className={route==='favorites'?'active':''} href="#favorites">관심제품 <span id="favorite-count">{favorites}</span></a>
-      <a className={route==='mine'?'active':''} href="#mine">요청 목록 보기</a>
-    </nav>
+    <form id="header-search" className="header-search" role="search">
+      <input name="query" aria-label="제품 검색" placeholder="어떤 의료장비를 찾으세요?" maxLength={100}/>
+      <button type="submit" aria-label="제품 검색 실행"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></button>
+    </form>
     <div className="member-header">{authUser?.role==='admin'?<a href="#ops" className="ops-link">운영 화면 ↗</a>:null}<a href={authUser?"#account":"#auth/login"}>{authUser?"마이페이지":"로그인"}</a>{!authUser?<a href="#auth/signup">회원가입</a>:null}</div>
   </header>;
 }
