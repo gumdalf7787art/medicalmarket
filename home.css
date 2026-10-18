@@ -204,3 +204,6 @@ body footer.company-footer{display:block;background:#0c192b;color:#c1cee0;max-wi
 .site-header .brand-logo img{position:absolute;width:230px;max-width:none;height:auto;left:-10px;top:-12px}
 @media(max-width:700px){.site-header .brand.brand-logo{width:155px;height:40px}.site-header .brand-logo img{width:170px;left:-8px;top:-8px}}
 @media(max-width:360px){.site-header .brand.brand-logo{width:140px}.site-header .brand-logo img{width:154px;left:-7px;top:-6px}}
+
+/* Literal search matches retain readable contrast on product cards. */
+.equipment-card mark.search-highlight{background:#fff0ad;color:#172b4d;border-radius:3px;padding:0 .08em;font-weight:700;box-decoration-break:clone;-webkit-box-decoration-break:clone}

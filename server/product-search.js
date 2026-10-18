@@ -13,6 +13,38 @@ const groups=[
 ];
 const separators=/[\s\-_.·/()[\]]/g;
 export const normalizeSearch=value=>String(value||'').toLowerCase().replace(separators,'');
+const literalTerms=query=>[...new Set(String(query||'').slice(0,100).trim().split(/\s+/).map(normalizeSearch).filter(Boolean))];
+export function productSearchRank(product,query){
+ const q=normalizeSearch(String(query||'').slice(0,100));if(!q)return 0;
+ const fields=[product.name,product.model].map(normalizeSearch),terms=literalTerms(query);
+ if(fields.some(v=>v===q))return 3;
+ if(fields.some(v=>v.includes(q)))return 2;
+ if(terms.every(t=>fields.some(v=>v.includes(t))))return 1;
+ return 0;
+}
+function normalizedSql(expression){
+ let text=`lower(${expression})`;
+ for(const separator of [' ','\t','\n','\r','-','_','.','·','/','(',')','[',']'])text=`replace(${text},'${separator}','')`;
+ return text;
+}
+export function productSearchOrderSql(query){
+ const q=normalizeSearch(String(query||'').slice(0,100));if(!q)return {sql:'(0+0)',args:[]};
+ const fields=['name','model'].map(f=>normalizedSql(`coalesce(json_extract(payload,'$.${f}'),'')`));
+ const terms=literalTerms(query),args=[q,q,q,q,JSON.stringify(literalTerms(query))];
+ const all=`NOT EXISTS(SELECT 1 FROM json_each(?) token WHERE ${fields.map(f=>`instr(${f},token.value)=0`).join(' AND ')})`;
+ return {sql:`CASE WHEN ${fields.map(f=>`${f}=?`).join(' OR ')} THEN 3 WHEN ${fields.map(f=>`instr(${f},?)>0`).join(' OR ')} THEN 2 WHEN ${all} THEN 1 ELSE 0 END`,args};
+}
+const escapeSearchText=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+export function highlightProductSearch(value,query){
+ const source=String(value||''),positions=[];let normalized='';
+ for(let i=0;i<source.length;i++){const c=normalizeSearch(source[i]);for(const part of c){normalized+=part;positions.push(i);}}
+ const terms=[normalizeSearch(String(query||'').slice(0,100)),...literalTerms(query)].filter(Boolean),ranges=[];
+ for(const term of terms){let start=0,index;while((index=normalized.indexOf(term,start))!==-1){ranges.push([positions[index],positions[index+term.length-1]+1]);start=index+term.length;}}
+ ranges.sort((a,b)=>a[0]-b[0]);const merged=[];
+ for(const r of ranges){const last=merged.at(-1);if(last&&r[0]<=last[1])last[1]=Math.max(last[1],r[1]);else merged.push(r);}
+ let html='',cursor=0;for(const [start,end] of merged){html+=escapeSearchText(source.slice(cursor,start))+'<mark class="search-highlight">'+escapeSearchText(source.slice(start,end))+'</mark>';cursor=end;}
+ return html+escapeSearchText(source.slice(cursor));
+}
 export function searchPlan(query){
  const raw=String(query||'').slice(0,100).trim();
  if(!raw)return [];
