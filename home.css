@@ -172,3 +172,12 @@ header.site-header{display:grid;grid-template-columns:minmax(180px,1fr) minmax(2
 @media(max-width:700px){header.site-header{display:grid;grid-template-columns:1fr auto;gap:12px}.site-header .header-search{grid-column:1/-1;grid-row:2;max-width:none}.site-header .member-header{grid-column:2;grid-row:1}}
 @media(max-width:600px){.market-banner{height:465px;min-height:465px}.market-hero .hero-sidebar{height:auto;display:block}.market-hero .hero-sidebar nav{display:grid;grid-template-columns:1fr 1fr}.market-hero .hero-sidebar [data-category-open]{min-height:44.6px}.market-slide.product-night{display:block;padding:28px 22px 135px}.market-slide.product-night .market-slide-image{position:absolute;right:12px;top:158px;width:44%;height:190px;padding:10px;opacity:1}.home-page .market-slide.product-night h1{font-size:25px}.market-slide.product-night .market-slide-copy>p:not(.home-kicker){max-width:50%;font-size:10px}}
 @media(prefers-reduced-motion:reduce){.hero-title-line,.market-slide.product-night:before,.market-slide.product-night .market-slide-image{animation:none!important;filter:none}}
+/* Transparent device photographs, with distinct editorial copy entrances. */
+.market-slide.product-night .market-slide-image{background:transparent;border-radius:0;box-shadow:none;padding:0;filter:drop-shadow(0 20px 24px #0006)}
+.market-slide.product-night h1{animation:hero-title-arrive .95s cubic-bezier(.16,1,.3,1) both}
+.market-slide.product-night .market-slide-copy>p:not(.home-kicker){animation:hero-copy-fade 1.2s ease .15s both}
+.market-slide.product-night:has(img[alt*="Smart-M"]) h1{animation:hero-copy-fade 1.25s ease both}
+.market-slide.product-night:has(img[alt*="FES3000"]) h1{font-size:clamp(26px,2.6vw,36px);animation:hero-title-arrive 1.15s cubic-bezier(.16,1,.3,1) both}
+@keyframes hero-copy-fade{from{opacity:0}to{opacity:1}}
+@media(max-width:600px){.market-slide.product-night:has(img[alt*="FES3000"]) h1{font-size:23px}}
+@media(prefers-reduced-motion:reduce){.market-slide.product-night h1,.market-slide.product-night .market-slide-copy>p:not(.home-kicker){animation:none!important}}
