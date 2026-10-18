@@ -11,7 +11,7 @@ export function SiteHeader({ route, favorites, authUser }) {
     <a href="#home" className="brand"><span>메디컬마켓<small>MEDICAL MARKET</small></span></a>
     <nav aria-label="주 메뉴">
       <a className={route==='home'?'active':''} href="#home">홈</a>
-      <a className={route==='catalog'?'active':''} href="#catalog">제품 탐색</a>
+      <a className={route==='catalog'?'active':''} href="#catalog">제품 검색</a>
       <a className={route==='favorites'?'active':''} href="#favorites">관심제품 <span id="favorite-count">{favorites}</span></a>
       <a className={route==='mine'?'active':''} href="#mine">요청 목록 보기</a>
     </nav>
