@@ -246,3 +246,6 @@ body.is-browse .catalog-banner.equipment-hero h1{font-size:34px;line-height:1.35
 body.is-browse .catalog-banner.equipment-hero p:not(.home-kicker){font-size:15px;line-height:1.8;color:#bdcfe4}
 body.is-browse .catalog-banner.equipment-hero .home-kicker{font-size:10px;color:#9db9d8}
 @media(max-width:700px){body.is-browse .catalog-banner.equipment-hero h1{font-size:26px}body.is-browse .catalog-banner.equipment-hero p:not(.home-kicker){font-size:13px}body.is-browse .catalog-banner.equipment-hero .home-kicker{font-size:9px}}
+
+/* Home header: reduce the approved logo uniformly by 15%. */
+.is-home .site-header .brand.brand-logo{transform:scale(.85);transform-origin:left center}
