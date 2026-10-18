@@ -221,3 +221,28 @@ body footer.company-footer{display:block;background:#0c192b;color:#c1cee0;max-wi
 @media(max-width:700px){.search-suggestions{max-height:310px}.search-suggestion{font-size:13px;padding:12px 7px}}
 
 .search-suggestion em{display:block;font-size:11px;color:#75869b;font-style:normal;margin-top:2px}
+
+/* Real equipment imagery for customer subpage heroes. */
+body .catalog-banner.equipment-hero{height:auto;min-height:300px;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:42px;padding:35px max(28px,calc((100% - 1200px)/2));background:radial-gradient(ellipse at 85% 20%,#234d7c 0,transparent 55%),linear-gradient(120deg,#09192e,#142f50 65%,#0b1c33);color:#fff;isolation:isolate}
+.equipment-hero:before{content:'';position:absolute;width:65%;height:150%;border:1px solid #80baff22;border-radius:50%;right:-10%;top:-75%;transform:rotate(-20deg);pointer-events:none}
+body .equipment-hero .equipment-hero-copy{min-width:0;max-width:580px}
+body .equipment-hero h1{font-size:34px;line-height:1.35;letter-spacing:-1.3px;overflow-wrap:anywhere;color:#fff}
+body .equipment-hero p:not(.home-kicker){color:#bdcfe4;max-width:100%;line-height:1.8}
+body .equipment-hero .home-kicker{color:#9db9d8;font-size:10px;letter-spacing:2px}
+body .equipment-hero a{color:#9dccff}
+body .equipment-hero .equipment-hero-visual{display:flex;align-items:center;justify-content:center;gap:16px;min-width:0;height:230px}
+.equipment-hero-visual figure{margin:0;min-width:0;flex:1;background:#fff;border-radius:16px;padding:12px;box-shadow:0 15px 30px #0002;text-align:center}
+body .catalog-banner.equipment-hero img{position:static;display:block;width:100%;height:175px;object-fit:contain;mix-blend-mode:normal;max-width:100%;margin:0}
+.equipment-hero-visual figcaption{font-size:11px;line-height:1.4;color:#47617d;margin-top:8px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.equipment-hero-visual.is-cutout figure{background:transparent;box-shadow:none;padding:0}
+body .equipment-hero-visual.is-cutout img{height:210px;filter:drop-shadow(0 14px 16px #0005)}
+.equipment-hero-visual.is-cutout figcaption{color:#b1c9e2;font-size:10px}
+body .catalog-banner.equipment-hero-text{grid-template-columns:1fr}
+@media(max-width:700px){body .catalog-banner.equipment-hero{grid-template-columns:1fr;gap:22px;padding:28px 22px;min-height:300px}body .equipment-hero h1{font-size:26px;margin:12px 0}body .equipment-hero p:not(.home-kicker){font-size:13px}body .equipment-hero .equipment-hero-visual{height:185px;gap:12px}body .catalog-banner.equipment-hero img{height:140px}body .equipment-hero-visual.is-cutout img{height:155px}.equipment-hero-visual figure{padding:10px}.equipment-hero-visual figcaption{font-size:10px}}
+
+body.is-browse .catalog-banner{background:radial-gradient(ellipse at 85% 20%,#234d7c 0,transparent 55%),linear-gradient(120deg,#09192e,#142f50 65%,#0b1c33)}
+body.is-browse .catalog-banner.equipment-hero>div{max-width:none;width:100%}
+body.is-browse .catalog-banner.equipment-hero h1{font-size:34px;line-height:1.35}
+body.is-browse .catalog-banner.equipment-hero p:not(.home-kicker){font-size:15px;line-height:1.8;color:#bdcfe4}
+body.is-browse .catalog-banner.equipment-hero .home-kicker{font-size:10px;color:#9db9d8}
+@media(max-width:700px){body.is-browse .catalog-banner.equipment-hero h1{font-size:26px}body.is-browse .catalog-banner.equipment-hero p:not(.home-kicker){font-size:13px}body.is-browse .catalog-banner.equipment-hero .home-kicker{font-size:9px}}

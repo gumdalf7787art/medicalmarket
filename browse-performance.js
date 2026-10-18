@@ -66,3 +66,17 @@ document.addEventListener('click',async event=>{
  status.textContent+=errors.length?' · 다시 실행하면 재생성할 수 있습니다.':' · 완료';
  }catch(error){status.textContent=error.message;}finally{productImportRunning=false;cloudSaving=false;button.disabled=false;}
 });
+
+function equipmentHero({code='',q='',items=[],favorites=false}={}){
+ const category=categoryData.find(c=>c.id===code)?.name;
+ const title=favorites?'눈여겨본 장비를, 한곳에서.':category|| (q?'찾으시는 장비를 만나보세요.':'진료의 다음 선택.');
+ const description=favorites?'관심제품을 살펴보고 간편하게 견적을 요청하세요.':category?category+' 제품을 살펴보고 우리 병원에 맞는 장비를 선택하세요.':q?'검색 결과에 맞는 장비를 확인하고 간편하게 견적을 요청하세요.':'다양한 의료장비를 한곳에서, 견적 요청까지 간편하게.';
+ const real=items.filter(p=>!p.deleted&&p.published!==false&&p.image&&!p.image.includes('sample-')&&/^(https:\/\/|\/media\/|assets\/)/.test(p.image)).slice(0,2);
+ const general=!code&&!q&&!favorites;
+ const pictures=general?[
+  {image:'assets/hero/xcube-cutout.png',name:'XCUBE 90 초음파 장비',cutout:true},
+  {image:'assets/hero/smart-cutout.png',name:'Smart-M 재활 장비',cutout:true},
+  {image:'assets/hero/fes-cutout.png',name:'FES 3000 물리치료 장비',cutout:true}
+ ]:real;
+ return `<section class="catalog-banner equipment-hero ${pictures.length?'':'equipment-hero-text'}"><div class="equipment-hero-copy"><p class="home-kicker">MEDICAL MARKET · EQUIPMENT</p><h1>${e(title)}</h1><p>${e(description)}</p><a href="#catalog/all/1">전체 제품 살펴보기 ↗</a></div>${pictures.length?`<div class="equipment-hero-visual ${general?'is-cutout':''}">${pictures.map(p=>`<figure><img src="${e(p.image)}" alt="${e(p.name)}" decoding="async"><figcaption>${e(p.model||p.name)}</figcaption></figure>`).join('')}</div>`:''}</section>`;
+}
