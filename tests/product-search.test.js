@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {matchesProductSearch,productSearchSql} from '../server/product-search.js';
-import categories from '../server/search-categories.json' with {type:'json'};
+import categories from '../server/search-categories.js';
 import {onRequestGet} from '../functions/api/cloud/products.js';
 
 test('search category dictionary stays synchronized with navigation',()=>{

@@ -1,4 +1,4 @@
-import categories from './search-categories.json' with {type:'json'};
+import categories from './search-categories.js';
 
 // Related terms expand within a concept, never to all treatment equipment.
 const groups=[
