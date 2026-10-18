@@ -8,7 +8,7 @@ let revision = 0;
 
 export function SiteHeader({ route, favorites, authUser }) {
   return <header className="site-header">
-    <a href="#home" className="brand"><span>메디컬마켓<small>MEDICAL MARKET</small></span></a>
+    <a href="#home" className="brand brand-logo" aria-label="메디컬마켓 홈"><img src="/assets/brand/medicalmarket-logo.png" alt="메디컬마켓 MEDICAL MARKET" width="2146" height="733" fetchPriority="high"/></a>
     <form id="header-search" className="header-search" role="search">
       <input name="query" aria-label="제품 검색" placeholder="어떤 의료장비를 찾으세요?" maxLength={100}/>
       <button type="submit" aria-label="제품 검색 실행"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></button>

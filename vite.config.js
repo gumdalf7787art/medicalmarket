@@ -3,7 +3,7 @@ import { readFileSync, cpSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import domainFiles from './scripts/domain-files.json' with { type: 'json' };
 const localEdition=existsSync('scripts/local-mode.json');
-const entryHtml='<!doctype html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>메디컬마켓</title></head><body><div id="medicalmarket-root"></div><script type="module" src="/src/main.jsx"></script></body></html>';
+const entryHtml='<!doctype html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>메디컬마켓</title><link rel="icon" type="image/png" href="/assets/brand/medicalmarket-icon.png"><link rel="apple-touch-icon" href="/assets/brand/medicalmarket-icon.png"></head><body><div id="medicalmarket-root"></div><script type="module" src="/src/main.jsx"></script></body></html>';
 
 // This adapter preserves the proven workflow handlers and storage schema while
 // React owns the route tree. Source files remain readable, independently editable.
