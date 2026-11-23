@@ -178,7 +178,7 @@ function discoveryPanel() {
   if(discoveryRows===null&&!discoveryBusy)queueMicrotask(()=>updateDiscovery('refresh'));
   return `${adminHeading('공식 홈페이지 장비 검토','제조사와 모델명을 기존 제품과 대조합니다. 원문을 확인한 뒤 공개하거나 공급업체 연결을 승인하세요.')}
     <p><a href="#ops/suppliers">← 공급업체 관리</a></p><section class="admin-panel">
-    <div class="actions"><button data-discovery="scan">공식 목록 다시 수집</button><button data-discovery="pilot">11월 23일 시범 목록 불러오기</button><button data-discovery="refresh">검토 목록 새로고침</button></div>
+    <div class="actions"><a href="/assets/admin/product-material.html">제품 자료 비공개 저장</a><button data-discovery="scan">공식 목록 다시 수집</button><button data-discovery="pilot">11월 23일 시범 목록 불러오기</button><button data-discovery="refresh">검토 목록 새로고침</button></div>
     <p role="status">${e(discoveryBusy?'처리 중입니다.':discoveryMessage)}</p>
     <div class="table-wrap"><table class="admin-table"><thead><tr><th>공급업체</th><th>모델·제조사</th><th>상태</th><th>검토</th></tr></thead><tbody>${(discoveryRows||[]).map(discoveryRow).join('')}</tbody></table></div>
     ${discoveryRows?.length===0?'<p>저장된 장비가 없습니다.</p>':''}</section>`;

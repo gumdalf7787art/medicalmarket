@@ -2,7 +2,7 @@ import {failure} from './cloud.js';
 
 export function reviewMaterial(data) {
   const {gallery, paragraphs} = data;
-  if (!Array.isArray(gallery) || !gallery.length || gallery.length > 50 ||
+  if (!Array.isArray(gallery) || !gallery.length || gallery.length > 160 ||
       gallery.some(path => typeof path !== 'string' || !/^\/media\/[a-f0-9-]{36}\.webp$/.test(path))) {
     throw failure('저장된 제품 사진을 확인해 주세요.');
   }
@@ -10,7 +10,13 @@ export function reviewMaterial(data) {
       paragraphs.some(text => typeof text !== 'string' || !text.trim() || /https?:\/\//i.test(text)) ||
       paragraphs.join('').length > 45000) throw failure('검토한 상세 설명을 입력해 주세요.');
   const escape = text => text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  return {image:gallery[0],gallery:[...new Set(gallery)],descriptionHtml:paragraphs.map(p=>'<p>'+escape(p.trim())+'</p>').join('')};
+  const figures = Array.isArray(data.figures) ? data.figures : [];
+  const descriptionHtml=paragraphs.map((p,i)=>{
+    const n=figures[i];
+    const image=Number.isInteger(n) && n>=0 && n<gallery.length ? '<figure><img loading="lazy" src="'+gallery[n]+'" alt="제품 상세 사진"></figure>' : '';
+    return '<p>'+escape(p.trim())+'</p>'+image;
+  }).join('');
+  return {image:gallery[0],gallery:[...new Set(gallery)],descriptionHtml};
 }
 
 export async function saveMaterial(env,data) {

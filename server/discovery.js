@@ -79,7 +79,7 @@ async function catalog(env) {
 }
 
 export async function listDiscovery(env) {
-  const rows = await env.DB.prepare(`SELECT d.*,s.company,c.category FROM mm_discovery d JOIN mm_suppliers s ON s.id=d.supplier_id
+  const rows = await env.DB.prepare(`SELECT d.*,s.company,c.category, (SELECT json_array_length(m.payload,'$.gallery') FROM mm_discovery_material m WHERE m.supplier_id=d.supplier_id AND m.identity=d.identity) materialCount FROM mm_discovery d JOIN mm_suppliers s ON s.id=d.supplier_id
     LEFT JOIN mm_discovery_categories c ON c.supplier_id=d.supplier_id AND c.identity=d.identity ORDER BY s.company,d.model`).all();
   const {products,links}=await catalog(env);
   return rows.results.map(row=>({...row,recommendedCategory:recommendedCategory(row),...classify(row,products,links)}));

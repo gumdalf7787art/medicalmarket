@@ -10,7 +10,7 @@ export function cleanProduct(p){
   const text=(key,max)=>{if(typeof p[key]!=='string'||p[key].length>max)throw failure('제품 '+key+' 항목을 확인해 주세요.');return p[key].trim();};
   const id=text('id',100),name=text('name',300);if(!/^[\w-]+$/.test(id)||!name)throw failure('제품번호와 제품명이 필요합니다.');
   if(!Array.isArray(p.categoryIds)||!p.categoryIds.length||p.categoryIds.length>3||p.categoryIds.some(v=>typeof v!=='string'||!/^([a-z0-9]{2}){1,3}$/.test(v)))throw failure('제품 카테고리를 확인해 주세요.');
-  if(!Array.isArray(p.gallery)||p.gallery.length>50||p.gallery.some(v=>!imageUrl(v))||(p.image&&!imageUrl(p.image)))throw failure('제품 사진 주소를 확인해 주세요.');
+  if(!Array.isArray(p.gallery)||p.gallery.length>160||p.gallery.some(v=>!imageUrl(v))||(p.image&&!imageUrl(p.image)))throw failure('제품 사진 주소를 확인해 주세요.');
   if(p.image&&!p.gallery.includes(p.image))throw failure('대표 사진은 등록 사진 중 선택해 주세요.');
   const descriptionHtml=sanitizeHtml(text('descriptionHtml',250000),{
     allowedTags:['p','div','span','br','strong','b','em','i','u','s','strike','sub','sup','h1','h2','h3','h4','h5','h6','ul','ol','li','table','thead','tbody','tfoot','tr','td','th','blockquote','hr','font','a','img','figure','figcaption','iframe'],
