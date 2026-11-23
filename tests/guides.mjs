@@ -9,7 +9,7 @@ const DB={prepare(sql){let args=[];return {bind(...values){args=values;return th
 sqlite.exec('CREATE TABLE mm_products(id TEXT,published INTEGER,deleted INTEGER,payload TEXT)');
 sqlite.prepare('INSERT INTO mm_products VALUES(?,1,0,?)').run('p1',JSON.stringify({name:'초음파',model:'V7',image:'assets/test.jpg',gallery:['assets/test.jpg','assets/side.jpg','assets/back.jpg','assets/extra.jpg'],descriptionHtml:'<p><img src="/media/detail.webp"></p>'}));
 const env={DB,GUIDE_PUBLISH_TOKEN:'test-only'};
-const draft={revision:0,published:false,productId:'p1',title:'초음파 안내',summary:'구성 안내',body:'## 구성\n\n<script>test</script>',images:['assets/test.jpg']};
+const draft={revision:0,published:false,productId:'p1',title:'초음파 안내',summary:'구성 안내',body:'소개 문단\n\n## 구성\n\n<script>test</script>\n\n사용 문단\n\n마무리 문단',images:['assets/test.jpg']};
 function ctx(path,slug,options){return {env,params:{slug},request:new Request('https://medicalmarket.co.kr'+path,options)};}
 const write=(payload,token='test-only')=>put(ctx('/api/guides/v7',['v7'],{method:'PUT',headers:{Authorization:'Bearer '+token},body:JSON.stringify(payload)}));
 const view=()=>show(ctx('/guide/v7',['v7']));
@@ -25,6 +25,8 @@ const listed=(await (await get(ctx('/api/guides?q=v7',[]))).json()).guides;
 assert.equal(listed.length,1);
 assert.deepEqual(JSON.parse(listed[0].images),['assets/test.jpg','assets/side.jpg','assets/back.jpg','assets/extra.jpg']);
 assert.ok(!html.includes('/media/detail.webp'));
+assert.match(html,/<p>소개 문단<\/p><figure><img[^>]+><\/figure><h2>구성<\/h2>/);
+assert.match(html,/<p>사용 문단<\/p><figure><img[^>]+><\/figure><p>마무리 문단<\/p>/);
 assert.equal((await write({...draft,revision:2,published:true,images:['assets/side.jpg','/media/detail.webp']})).status,400);
 assert.equal((await write({...draft,revision:2,published:true,images:['assets/side.jpg','assets/back.jpg']})).status,200);
 const chosen=(await (await get(ctx('/api/guides/v7',['v7']))).json()).images;
