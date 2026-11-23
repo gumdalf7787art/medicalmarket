@@ -8,6 +8,25 @@ export async function discoverySchema(env) {
     supplier_id TEXT NOT NULL, identity TEXT NOT NULL, maker TEXT NOT NULL, model TEXT NOT NULL,
     source_url TEXT NOT NULL, observed_at TEXT NOT NULL, decision TEXT DEFAULT '', product_id TEXT DEFAULT '', approval_token TEXT DEFAULT '',
     PRIMARY KEY(supplier_id,identity))`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS mm_discovery_categories (
+    supplier_id TEXT NOT NULL, identity TEXT NOT NULL, category TEXT NOT NULL,
+    PRIMARY KEY(supplier_id,identity))`).run();
+}
+
+export function recommendedCategory(row) {
+  const model=compact(row.model);
+  if(row.maker===sources.inbody.maker && /^inbodyj?\d/.test(model))return '20f010';
+  if(row.maker===sources.alpinion.maker){
+    if(/^(xcubei\d|minisono)/.test(model))return '201040';
+    if(/^[xe]cube/.test(model))return '201010';
+    if(/^alpius/.test(model))return '40';
+    if(/^vifu/.test(model))return '40';
+  }
+  if(row.maker===sources.bistos0340.maker){
+    const categories={bt100:'c010',bt1000:'40',bt200l:'201060',bt800:'3010',bt350:'201050',bt36:'c01020',bt400:'20j030',bt410:'804020',bt500:'20j010',bt550:'20j020',bt770:'202050'};
+    return categories[model]||'';
+  }
+  return '';
 }
 
 function makerKey(value) {
@@ -51,9 +70,10 @@ async function catalog(env) {
 }
 
 export async function listDiscovery(env) {
-  const rows = await env.DB.prepare('SELECT d.*,s.company FROM mm_discovery d JOIN mm_suppliers s ON s.id=d.supplier_id ORDER BY s.company,d.model').all();
+  const rows = await env.DB.prepare(`SELECT d.*,s.company,c.category FROM mm_discovery d JOIN mm_suppliers s ON s.id=d.supplier_id
+    LEFT JOIN mm_discovery_categories c ON c.supplier_id=d.supplier_id AND c.identity=d.identity ORDER BY s.company,d.model`).all();
   const {products,links}=await catalog(env);
-  return rows.results.map(row=>({...row,...classify(row,products,links)}));
+  return rows.results.map(row=>({...row,recommendedCategory:recommendedCategory(row),...classify(row,products,links)}));
 }
 
 async function approve(env,data) {
@@ -95,6 +115,14 @@ export async function discoveryAction({request,env}) {
   if(request.method==='GET') return json({rows:await listDiscovery(env)});
   if(request.method!=='POST') throw failure('지원하지 않는 요청입니다.',405);
   const data=await bodyJson(request,3000);
+  if(data.action==='category'){
+    if(typeof data.category!=='string'||!/^([a-z0-9]{2}){1,3}$/.test(data.category))throw failure('대표 카테고리를 선택해 주세요.');
+    const result=await env.DB.prepare(`INSERT INTO mm_discovery_categories(supplier_id,identity,category)
+      SELECT supplier_id,identity,? FROM mm_discovery WHERE supplier_id=? AND identity=? AND decision=''
+      ON CONFLICT(supplier_id,identity) DO UPDATE SET category=excluded.category`).bind(data.category,data.supplier,data.identity).run();
+    if(result.meta.changes!==1)throw failure('검토 목록을 다시 확인해 주세요.',409);
+    return json({ok:true});
+  }
   if(data.action==='scan'||data.action==='pilot') {
     if(!Object.hasOwn(sources,data.key)) throw failure('시범 공급업체를 확인해 주세요.');
     const items=data.action==='pilot'?pilot[data.key]:await collect(data.key,data.mirror===true);

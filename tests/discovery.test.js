@@ -39,6 +39,13 @@ test('private pilot, repeat imports and explicit approval of publication or supp
   }
   const rows=(await (await call()).json()).rows;
   assert.equal(rows.length,30);
+  assert.ok(rows.every(row=>row.recommendedCategory));
+  const inbody=rows.find(row=>row.model==='InBody970S');
+  assert.equal(inbody.recommendedCategory,'20f010');
+  const change={action:'category',supplier:inbody.supplier_id,identity:inbody.identity,category:'c02010'};
+  assert.equal((await call(change)).status,200);
+  assert.equal((await call({action:'pilot',key:'inbody'})).status,200);
+  assert.equal((await (await call()).json()).rows.find(row=>row.identity===inbody.identity).category,'c02010');
   assert.equal(db.prepare('SELECT count(*) n FROM mm_products').get().n,0);
   const first=rows.find(r=>r.model==='BT-350');
   const approve={supplier:first.supplier_id,identity:first.identity,action:'publish',name:'태아감시장치 BT-350',category:'201050'};

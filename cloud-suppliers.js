@@ -169,9 +169,10 @@ async function discoveryRequest(data) {
 function discoveryRow(row,index) {
   const labels={draft:'비공개 초안',candidate:'공급업체 연결 후보',compare:'모델 비교 필요',linked:'이미 연결됨',published:'공개 완료',connected:'연결 완료'};
   const status=row.decision||row.kind;
+  const category=row.category||row.recommendedCategory;
   const options=row.matches.map(p=>`<option value="${e(p.id)}">${e(p.name)} · ${e(p.model)} · ${e(p.id)}</option>`).join('');
   return `<tr><td>${e(row.company)}</td><td><strong>${e(row.model)}</strong><br>${e(row.maker)} · <a target="_blank" rel="noopener noreferrer" href="${e(row.source_url)}">공식 원문</a></td><td>${labels[status]}</td><td>
-    ${status==='draft'?`<details><summary>초안 검토</summary><form data-discovery-review="${index}"><label>공개 제품명<input name="name" value="${e(row.model)}" required maxlength="300"></label><label>대표 카테고리<select name="category" required>${categoryOptions()}</select></label><button>확인 후 공개</button></form></details>`:['candidate','compare'].includes(status)?`<form data-discovery-review="${index}"><label>기존 제품<select name="product" required><option value="">비교 후 선택</option>${options}</select></label><button>공급업체 연결 승인</button></form>`:''}</td></tr>`;
+    ${status==='draft'?`<label>${row.category?'대표 카테고리':'추천 대표 카테고리'}<select name="category" form="discovery-review-${index}" data-discovery-category="${index}" required>${categoryOptions(category)}</select></label><small role="status" data-category-feedback></small><details><summary>초안 검토</summary><form id="discovery-review-${index}" data-discovery-review="${index}"><label>공개 제품명<input name="name" value="${e(row.model)}" required maxlength="300"></label><button>확인 후 공개</button></form></details>`:['candidate','compare'].includes(status)?`<form data-discovery-review="${index}"><label>기존 제품<select name="product" required><option value="">비교 후 선택</option>${options}</select></label><button>공급업체 연결 승인</button></form>`:''}</td></tr>`;
 }
 function discoveryPanel() {
   if(discoveryRows===null&&!discoveryBusy)queueMicrotask(()=>updateDiscovery('refresh'));
@@ -226,4 +227,29 @@ document.addEventListener('submit',event=>{
   const row=discoveryRows[Number(form.dataset.discoveryReview)],fields=Object.fromEntries(new FormData(form));
   void updateDiscovery('review',{action:fields.product?'link':'publish',supplier:row.supplier_id,identity:row.identity,...fields});
   render();
+});
+
+document.addEventListener('change',async event=>{
+  const select=event.target.closest('select[data-discovery-category]');
+  if(!select)return;
+  const row=discoveryRows[Number(select.dataset.discoveryCategory)];
+  const previous=row.category||row.recommendedCategory||'';
+  const feedback=select.closest('td').querySelector('[data-category-feedback]');
+  if(!select.value){select.value=previous;return;}
+  const category=select.value;
+  select.disabled=true;
+  const button=select.form.querySelector('button');
+  button.disabled=true;
+  feedback.textContent='저장 중…';
+  try{
+    await discoveryRequest({action:'category',supplier:row.supplier_id,identity:row.identity,category});
+    row.category=category;
+    feedback.textContent='비공개 초안에 저장됨';
+  }catch(error){
+    select.value=previous;
+    feedback.textContent=error.message;
+  }finally{
+    select.disabled=false;
+    button.disabled=false;
+  }
 });
