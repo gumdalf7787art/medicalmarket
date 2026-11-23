@@ -4,7 +4,9 @@ import {inbodyCatalog} from './inbody-catalog-data.js';
 const escapeHtml=value=>value.replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[char]);
 const textBytes=new TextEncoder();
 
-async function saveOfficialImage(bucket,address){
+export const inbodyPhotoCount=(maker,model)=>maker==='인바디'&&Object.hasOwn(inbodyCatalog,model)?inbodyCatalog[model].images.length:0;
+
+async function saveOfficialImage(bucket,address,download){
   const url=new URL(address);
   const webp=url.origin==='https://inbody.com' && /^\/images\/products\/category\/body_composition\/inbody[a-z0-9]+\/[a-z0-9_]+\.webp$/.test(url.pathname);
   const png=url.origin==='https://inbodyinfra.blob.core.windows.net' && /^\/inbodyhome\/prod\/product\/[^/]+\.png$/.test(url.pathname);
@@ -15,6 +17,7 @@ async function saveOfficialImage(bucket,address){
   const name=id+'.'+extension;
   const key='product-images/'+name;
   if(!await bucket.head(key)){
+    if(!download)throw failure('공식 사진을 먼저 저장해 주세요.',409);
     const response=await fetch(url,{redirect:'error',signal:AbortSignal.timeout(12000)});
     if(!response.ok)throw failure('인바디 공식 이미지 응답을 확인해 주세요.',502);
     const bytes=await limitedBody(response,8*1024*1024);
@@ -28,21 +31,30 @@ async function saveOfficialImage(bucket,address){
   return '/media/'+name;
 }
 
-export async function prepareInbodyProduct(env,product){
-  if(product.maker!=='인바디'||!Object.hasOwn(inbodyCatalog,product.model))return product;
+export async function stageInbodyImages(env,product,start=0,count=5,download=true){
+  if(!inbodyPhotoCount(product.maker,product.model))return [];
   if(!env.MEDIA)throw failure('제품 사진 저장소 연결을 확인해 주세요.',503);
   const entry=inbodyCatalog[product.model];
   const saved=[];
-  for(let index=0;index<entry.images.length;index+=5){
-    const images=await Promise.all(entry.images.slice(index,index+5).map(async ([address,label])=>{
+  const pending=entry.images.slice(start,start+count);
+  for(let index=0;index<pending.length;index+=5){
+    const images=await Promise.all(pending.slice(index,index+5).map(async ([address,label])=>{
       try {
-        return {address,label,path:await saveOfficialImage(env.MEDIA,address)};
+        return {address,label,path:await saveOfficialImage(env.MEDIA,address,download)};
       } catch(error){
-        throw failure(product.model+' '+label+' 사진 저장 실패 · '+(error.status?error.message:'원본 서버 접속 오류'),502);
+        throw failure(product.model+' '+label+' 사진 저장 실패 · '+(error.status?error.message:'원본 서버 접속 오류'),422);
       }
     }));
     saved.push(...images);
   }
+  return saved;
+}
+
+export async function prepareInbodyProduct(env,product){
+  const count=inbodyPhotoCount(product.maker,product.model);
+  if(!count)return product;
+  const entry=inbodyCatalog[product.model];
+  const saved=await stageInbodyImages(env,product,0,count,false);
   const figure=pattern=>{
     const item=saved.find(x=>x.address.includes(pattern));
     return item?`<figure><img src="${item.path}" alt="${escapeHtml(product.model+' '+item.label)}" loading="lazy"><figcaption>${escapeHtml(item.label)}</figcaption></figure>`:'';

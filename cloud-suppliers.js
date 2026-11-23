@@ -189,6 +189,12 @@ async function updateDiscovery(action,review) {
   const messages=[];
   try {
     if(review) {
+      if(review.action==='publish'){
+        const row=discoveryRows.find(item=>item.supplier_id===review.supplier&&item.identity===review.identity);
+        for(let start=0;start<(row?.officialPhotoCount||0);start+=5){
+          await discoveryRequest({action:'stage-photos',supplier:review.supplier,identity:review.identity,start});
+        }
+      }
       await discoveryRequest(review);
       messages.push(review.action==='publish'?'제품을 공개했습니다.':'공급업체를 연결했습니다.');
       cloudSupplierRows=null;

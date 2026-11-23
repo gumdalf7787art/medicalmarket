@@ -2,7 +2,7 @@ import {failure, json, sameOrigin, requireAdmin, bodyJson} from './cloud.js';
 import {supplierSchema} from './suppliers.js';
 import {sources, pilot, collect, compact} from './discovery-sources.js';
 import {discoveryPhoto} from './discovery-photo.js';
-import {prepareInbodyProduct} from './inbody-catalog.js';
+import {inbodyPhotoCount,prepareInbodyProduct,stageInbodyImages} from './inbody-catalog.js';
 
 export async function discoverySchema(env) {
   await supplierSchema(env);
@@ -79,7 +79,7 @@ export async function listDiscovery(env) {
   const rows = await env.DB.prepare(`SELECT d.*,s.company,c.category FROM mm_discovery d JOIN mm_suppliers s ON s.id=d.supplier_id
     LEFT JOIN mm_discovery_categories c ON c.supplier_id=d.supplier_id AND c.identity=d.identity ORDER BY s.company,d.model`).all();
   const {products,links}=await catalog(env);
-  return rows.results.map(row=>({...row,recommendedCategory:recommendedCategory(row),...classify(row,products,links)}));
+  return rows.results.map(row=>({...row,recommendedCategory:recommendedCategory(row),officialPhotoCount:inbodyPhotoCount(row.maker,row.model),...classify(row,products,links)}));
 }
 
 async function approve(env,data) {
@@ -122,6 +122,13 @@ export async function discoveryAction({request,env}) {
   if(request.method==='GET') return json({rows:await listDiscovery(env)});
   if(request.method!=='POST') throw failure('지원하지 않는 요청입니다.',405);
   const data=await bodyJson(request,3000);
+  if(data.action==='stage-photos'){
+    if(!Number.isInteger(data.start)||data.start<0||data.start>=50)throw failure('사진 범위를 확인해 주세요.');
+    const row=await env.DB.prepare("SELECT maker,model FROM mm_discovery WHERE supplier_id=? AND identity=? AND decision=''").bind(data.supplier,data.identity).first();
+    if(!row)throw failure('비공개 초안을 다시 확인해 주세요.',409);
+    const saved=await stageInbodyImages(env,row,data.start);
+    return json({count:saved.length});
+  }
   if(data.action==='category'){
     if(typeof data.category!=='string'||!/^([a-z0-9]{2}){1,3}$/.test(data.category))throw failure('대표 카테고리를 선택해 주세요.');
     const result=await env.DB.prepare(`INSERT INTO mm_discovery_categories(supplier_id,identity,category)
