@@ -127,7 +127,15 @@ export async function discoveryAction({request,env}) {
   await requireAdmin(request,env);
   if(request.method==='POST') sameOrigin(request);
   await discoverySchema(env);
-  if(request.method==='GET') return json({rows:await listDiscovery(env)});
+  if(request.method==='GET') {
+    const params=new URL(request.url).searchParams;
+    if(params.has('material')){
+      const saved=await env.DB.prepare('SELECT payload FROM mm_discovery_material WHERE supplier_id=? AND identity=?').bind(params.get('supplier')||'',params.get('material')).first();
+      if(!saved)throw failure('저장된 제품 자료가 없습니다.',404);
+      return json({material:JSON.parse(saved.payload)});
+    }
+    return json({rows:await listDiscovery(env)});
+  }
   if(request.method!=='POST') throw failure('지원하지 않는 요청입니다.',405);
   const data=await bodyJson(request,240000);
   if(data.action==='prepare') return json(await saveMaterial(env,data));

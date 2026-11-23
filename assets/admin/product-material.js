@@ -13,7 +13,28 @@ async function list(){
   ul.replaceChildren();
   for(const row of rows.filter(row=>row.materialCount && !row.decision)){
     const li=document.createElement('li');
-    li.textContent=row.model+' · 비공개 · 사진 '+row.materialCount+'장 · 상세 설명 저장됨';
+    const details=document.createElement('details');
+    const summary=document.createElement('summary');
+    summary.textContent=row.model+' · 비공개 · 사진 '+row.materialCount+'장 · 상세 설명 저장됨';
+    details.append(summary);
+    details.ontoggle=async()=>{
+      if(!details.open||details.childElementCount>1)return;
+      const body=document.createElement('div');
+      details.append(body);
+      try{
+        const query=new URLSearchParams({supplier:row.supplier_id,material:row.identity});
+        const {material}=await api(discovery+'?'+query);
+        const parsed=new DOMParser().parseFromString(material.descriptionHtml,'text/html');
+        for(const p of parsed.querySelectorAll('p')){
+          const text=document.createElement('p');text.textContent=p.textContent;body.append(text);
+        }
+        for(const [index,url] of material.gallery.entries()){
+          const link=document.createElement('a');link.href=url;link.target='_blank';link.rel='noopener';
+          const img=document.createElement('img');img.src=url+'?thumb=1';img.loading='lazy';img.width=100;img.alt=index===0?'대표 사진':row.model+' 사진 '+(index+1);link.append(img);body.append(link);
+        }
+      }catch(e){body.textContent=e.message;}
+    };
+    li.append(details);
     ul.append(li);
   }
   return rows;
