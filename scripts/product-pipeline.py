@@ -80,6 +80,8 @@ def webp(image, size):
 
 
 def upload_gallery(api, draft):
+    if not 1 <= len(draft['images']) <= 20:
+        raise ValueError('Select between 1 and 20 product images before upload')
     gallery = []
     for item in draft['images']:
         data, _, _ = download(item['url'], draft['key'], 32 << 20)
@@ -96,8 +98,6 @@ def upload_gallery(api, draft):
             if path not in gallery:
                 api.call('/api/cloud/image', webp(image, 480), {'Content-Type': 'image/webp', 'X-Thumbnail-For': path.split('/')[-1]})
                 gallery.append(path)
-    if not 1 <= len(gallery) <= 50:
-        raise ValueError('Select between 1 and 50 distinct product images')
     return gallery
 
 
@@ -162,6 +162,8 @@ def run(args, api):
         temp.replace(receipt)
         return {'review': str(args.file), 'images': len(gallery)}
     staged = json.loads(receipt.read_bytes())
+    if not 1 <= len(staged['gallery']) <= 20:
+        raise ValueError('Select up to 20 images and run prepare again')
     if digest != staged['digest']:
         raise ValueError('Review file changed: run prepare again')
     if 'product' in draft:

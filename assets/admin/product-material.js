@@ -52,7 +52,7 @@ async function prepare(file,rows){
   const d=JSON.parse(await file.text());
   const matches=rows.filter(r=>!r.decision && r.kind==='draft' && r.maker===d.maker && r.model===d.model && r.source_url===d.source);
   if(matches.length!==1) throw Error(d.model+' · 일치하는 비공개 초안 1건이 필요합니다.');
-  if(!Array.isArray(d.images)||!d.images.length||d.images.length>160||!d.paragraphs?.length)throw Error('본문과 사진 수를 확인하세요.');
+  if(!Array.isArray(d.images)||!d.images.length||d.images.length>20||!d.paragraphs?.length)throw Error('본문과 제품 사진 수(1~20장)를 확인하세요.');
   const gallery=[];
   for(let start=0;start<d.images.length;start+=4){
     progress.textContent=d.model+' · 사진 '+Math.min(start+4,d.images.length)+' / '+d.images.length;

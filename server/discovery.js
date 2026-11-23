@@ -115,6 +115,7 @@ async function approve(env,data) {
     const photo=await db.prepare('SELECT image FROM mm_discovery_photos WHERE supplier_id=? AND identity=?').bind(row.supplier_id,row.identity).first();
     const base={id,name:data.name.trim(),maker:row.maker,model:row.model,categoryIds:[data.category],published:true,deleted:false,image:photo?.image||'',gallery:photo?[photo.image]:[],imageFit:'contain',descriptionHtml:'',updatedAt:at};
     const product=material?{...base,...JSON.parse(material.payload)}:await prepareInbodyProduct(discoveryPhoto(base));
+    if (product.gallery?.length > 20) throw failure('핵심 사진을 최대 20장 선정해 비공개 저장한 뒤 공개해 주세요.');
     statements.push(db.prepare('INSERT INTO mm_products (id,payload,published,deleted,revision,updated_at) SELECT ?,?,1,0,1,? WHERE '+approved).bind(id,JSON.stringify(product),at,...guard));
   }
   statements.push(db.prepare('INSERT OR IGNORE INTO mm_supplier_products(supplier_id,product_id) SELECT ?,? WHERE '+approved).bind(row.supplier_id,id,...guard));

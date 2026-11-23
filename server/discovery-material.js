@@ -2,9 +2,9 @@ import {failure} from './cloud.js';
 
 export function reviewMaterial(data) {
   const {gallery, paragraphs} = data;
-  if (!Array.isArray(gallery) || !gallery.length || gallery.length > 160 ||
+  if (!Array.isArray(gallery) || !gallery.length || gallery.length > 20 ||
       gallery.some(path => typeof path !== 'string' || !/^\/media\/[a-f0-9-]{36}\.webp$/.test(path))) {
-    throw failure('저장된 제품 사진을 확인해 주세요.');
+    throw failure('저장된 제품 사진을 1~20장 선택해 주세요.');
   }
   if (!Array.isArray(paragraphs) || !paragraphs.length || paragraphs.length > 200 ||
       paragraphs.some(text => typeof text !== 'string' || !text.trim() || /https?:\/\//i.test(text)) ||
