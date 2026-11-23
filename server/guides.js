@@ -30,14 +30,11 @@ export function productGuidePhotos(product){
 function guideWithPhotos(row){
   if(!row)return row;
   const {product_payload,...guide}=row;
-  const selected=distinct(JSON.parse(guide.images));
-  if(selected.length>=2)return {...guide,images:JSON.stringify(selected.slice(0,4))};
-  const {gallery,details}=productGuidePhotos(JSON.parse(product_payload));
-  const photos=distinct([...selected,...gallery]);
-  const extra=details.filter(url=>!photos.includes(url));
-  return {...guide,images:JSON.stringify(extra.length
-    ?[...photos.slice(0,3),...extra].slice(0,4)
-    :photos.slice(0,4))};
+  const product=JSON.parse(product_payload);
+  const gallery=distinct([product.image,...(product.gallery||[])]);
+  const selected=distinct(JSON.parse(guide.images)).filter(url=>gallery.includes(url));
+  const photos=selected.length>=2?selected:distinct([...selected,...gallery]);
+  return {...guide,images:JSON.stringify(photos.slice(0,4))};
 }
 
 const columns=`g.*,json_extract(p.payload,'$.name') name,json_extract(p.payload,'$.model') model,p.payload product_payload`;
@@ -58,9 +55,9 @@ export async function save(db,slug,input){
   if(typeof published!=='boolean'||!Number.isSafeInteger(revision)||revision<0||typeof productId!=='string')throw failure('제품 또는 저장 버전을 확인하세요.');
   const product=await db.prepare('SELECT payload FROM mm_products WHERE id=? AND published=1 AND deleted=0').bind(productId).first();
   if(!product)throw failure('공개된 등록 제품을 선택하세요.');
-  const {gallery,details}=productGuidePhotos(JSON.parse(product.payload));
-  const allowed=new Set([...gallery,...details]);
-  if(!Array.isArray(images)||images.length>4||images.some(url=>!allowed.has(url)||! /^(https:\/\/|assets\/|\/media\/)/.test(url)))throw failure('선택한 제품의 등록 사진만 사용할 수 있습니다.');
+  const p=JSON.parse(product.payload);
+  const allowed=new Set(distinct([p.image,...(p.gallery||[])]));
+  if(!Array.isArray(images)||images.length>4||images.some(url=>!allowed.has(url)||! /^(https:\/\/|assets\/|\/media\/)/.test(url)))throw failure('선택한 제품의 갤러리에 등록된 사진만 사용할 수 있습니다.');
   const now=new Date().toISOString(),args=[productId,...fields,JSON.stringify([...new Set(images)]),Number(published),now];
   const result=revision===0
     ?await db.prepare('INSERT OR IGNORE INTO mm_guides(product_id,title,summary,body,images,published,updated,slug,revision,created,first_published) VALUES(?,?,?,?,?,?,?,?,1,?,?)').bind(...args,slug,now,published?now:null).run()
