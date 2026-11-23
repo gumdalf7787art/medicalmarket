@@ -29,7 +29,7 @@ export const onRequestGet=safeHandler(async({request,env})=>{
   if(params.has('id')){
     const lookup=env.DB.prepare('SELECT payload,revision FROM mm_products WHERE id=? '+(admin?'':'AND published=1 AND deleted=0')).bind(params.get('id'));
     let row=await lookup.first();
-    if(row&&params.get('id')===j50Id&&row.revision===1)row=await updateJ50(env.DB,row)||await lookup.first();
+    if(row&&params.get('id')===j50Id)row=await updateJ50(env.DB,row)||await lookup.first();
     if(!row)throw failure('제품을 찾을 수 없습니다.',404);
     const product=discoveryPhoto(JSON.parse(row.payload));
     return json({product:{...product,guidePhotos:productGuidePhotos(product),revision:row.revision}});

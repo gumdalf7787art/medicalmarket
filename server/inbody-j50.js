@@ -29,12 +29,15 @@ ${figure('result_paper_02')}
 ${figure('design_02')}
 <h3>주요 사양</h3><table><tbody>${specs.map(([label,value])=>`<tr><th>${label}</th><td>${value}</td></tr>`).join('')}</tbody></table>
 <h3>도입 전 확인할 구성품</h3><p>제조사가 안내하는 기본 구성은 본체와 전원 어댑터·케이블입니다. 종이 결과지를 사용할 기관은 견적에서 프린터, 프린터 데스크, 결과지의 포함 여부를 확인하세요. 회원관리 프로그램 LookinBody(LB Web·LB120)는 별도 구매 항목입니다. 인바디 혈압계를 함께 사용할 때는 보유 모델의 연결 가능 여부도 확인하세요.</p>
-<p>이 제품은 의료기기입니다. 사용 전 제품 설명서의 사용 방법과 주의사항을 확인하세요.</p><p>사양과 이미지 출처 · <a href="https://inbody.com/kr/ko/products/category/body-composition/1">인바디 공식 InBody J50 제품 안내</a></p>`;
+<p>이 제품은 의료기기입니다. 사용 전 제품 설명서의 사용 방법과 주의사항을 확인하세요.</p>`;
 export async function updateJ50(db,row){
   const p=JSON.parse(row.payload);
-  if(p.id!==j50Id || row.revision!==1 || p.model!=='InBody J50' || p.descriptionHtml?.trim())return row;
+  if(p.id!==j50Id || p.model!=='InBody J50')return row;
+  const footer='<p>사양과 이미지 출처 · <a href="https://inbody.com/kr/ko/products/category/body-composition/1">인바디 공식 InBody J50 제품 안내</a></p>';
+  const seed=row.revision===1 && !p.descriptionHtml?.trim();
+  if(!seed && !p.descriptionHtml?.includes(footer))return row;
   const at=new Date().toISOString(),gallery=Object.keys(illustrations).map(file);
-  const payload=JSON.stringify({...p,image:gallery[0],gallery,descriptionHtml:description,updatedAt:at});
+  const payload=JSON.stringify(seed?{...p,image:gallery[0],gallery,descriptionHtml:description,updatedAt:at}:{...p,descriptionHtml:p.descriptionHtml.replace(footer,''),updatedAt:at});
   const result=await db.prepare('UPDATE mm_products SET payload=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=? AND published=1 AND deleted=0').bind(payload,at,j50Id,row.revision).run();
   if(result.meta.changes===1)return {payload,revision:row.revision+1};
   return null;
