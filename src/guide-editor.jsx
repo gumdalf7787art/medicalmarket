@@ -33,14 +33,14 @@ export default function GuideEditor(){
     const g=await api('/api/guides/'+encodeURIComponent(form.slug),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form,published})});
     patch({revision:g.revision,published});refresh(v=>v+1);tell(published?'발행했습니다.':'비공개로 저장했습니다.');
   });}
-  const photos=[...new Set([product?.image,...(product?.gallery||[])].filter(Boolean))];
+  const photos=product?.guidePhotos?[...product.guidePhotos.gallery,...product.guidePhotos.details]:[...new Set([product?.image,...(product?.gallery||[])].filter(Boolean))];
   return <section className="guide-editor"><h1>제품 안내 관리</h1><fieldset disabled={busy}><legend>작성한 글</legend>
     {rows.map(r=><button key={r.slug} onClick={()=>edit(r.slug)}>{r.published?'공개':'비공개'} · {r.title}</button>)}
     {page>1&&<button onClick={()=>paging(page-1)}>이전</button>}{more&&<button onClick={()=>paging(page+1)}>다음</button>}
     <button onClick={()=>{set(empty);productSet(null);tell('');}}>새 글 작성</button></fieldset>
     <fieldset disabled={busy}><legend>제품과 사진</legend><label>제품명 또는 모델명 검색<input value={q} onChange={e=>search(e.target.value)}/></label><label>등록 제품 선택<select value={form.productId} onChange={e=>choose(e.target.value)}><option value="">선택하세요</option>{product&&!products.some(p=>p.id===product.id)&&<option value={product.id}>{product.name} {product.model}</option>}{products.map(p=><option key={p.id} value={p.id}>{p.name} · {p.model}</option>)}</select></label>
-    {photos.length>0&&<p>클릭한 순서로 표시하며 첫 사진을 대표 이미지로 사용합니다.</p>}
-    <div className="guide-photos">{photos.map(url=><label key={url}><img src={url} alt={product.name}/><span><input type="checkbox" checked={form.images.includes(url)} onChange={()=>patch({images:form.images.includes(url)?form.images.filter(x=>x!==url):[...form.images,url]})}/> {form.images.includes(url)?form.images.indexOf(url)+1:'선택'}</span></label>)}</div></fieldset>
+    {photos.length>0&&<p>사진을 2~4장 선택하면 클릭한 순서로 표시합니다. 첫 사진은 대표 이미지입니다. 선택이 2장 미만이면 등록 사진을 자동으로 보완합니다.</p>}
+    <div className="guide-photos">{photos.map(url=><label key={url}><img src={url} alt={product.name}/><span><input type="checkbox" checked={form.images.includes(url)} disabled={form.images.length>=4&&!form.images.includes(url)} onChange={()=>patch({images:form.images.includes(url)?form.images.filter(x=>x!==url):[...form.images,url]})}/> {form.images.includes(url)?form.images.indexOf(url)+1:'선택'}</span></label>)}</div></fieldset>
     <fieldset disabled={busy}><legend>글 편집</legend><label>글 주소 (/guide/ 뒤에 표시)<input value={form.slug} disabled={form.revision>0} onChange={e=>patch({slug:e.target.value})}/></label>
     <label>제목<input maxLength={200} value={form.title} onChange={e=>patch({title:e.target.value})}/></label><label>요약<textarea maxLength={500} value={form.summary} onChange={e=>patch({summary:e.target.value})}/></label>
     <label>본문 (빈 줄로 문단 구분, 소제목은 ## 으로 시작)<textarea rows="14" maxLength={60000} value={form.body} onChange={e=>patch({body:e.target.value})}/></label>
