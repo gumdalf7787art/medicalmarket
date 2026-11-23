@@ -11,15 +11,16 @@ export default function SearchInput(props){
   const categoryItems=matched.map(c=>({label:c.name,detail:categories.find(parent=>parent.id===c.id.slice(0,-2))?.name||'',type:'카테고리',href:'#catalog/'+c.id+'/1'}));
   setItems(categoryItems);setBusy(true);const controller=new AbortController();
   const timer=setTimeout(async()=>{try{
-   const response=await fetch('/api/cloud/products?page=1&q='+encodeURIComponent(query),{signal:controller.signal});if(!response.ok)throw Error();
+   const suffix=encodeURIComponent(query),options={signal:controller.signal};
+   const [response,guides]=await Promise.all([fetch('/api/cloud/products?page=1&q='+suffix,options),fetch('/api/guides?q='+suffix,options).then(r=>r.ok?r.json():{}).catch(()=>({}))]);if(!response.ok)throw Error();
    const data=await response.json();if(controller.signal.aborted)return;
    const names=[...new Set((data.products||[]).map(p=>p.name).filter(Boolean))].slice(0,5);
-   setItems([...categoryItems,...names.map(name=>({label:name,type:'제품',href:'#catalog/all/1?q='+encodeURIComponent(name)}))]);
+   setItems([...categoryItems,...(guides.guides||[]).slice(0,3).map(g=>({label:g.title,type:"제품 안내",href:"/guide/"+g.slug})),...names.map(name=>({label:name,type:'제품',href:'#catalog/all/1?q='+encodeURIComponent(name)}))]);
   }catch{/* Ordinary search remains usable if suggestions are unavailable. */}finally{if(!controller.signal.aborted)setBusy(false);}},220);
   return()=>{clearTimeout(timer);controller.abort();};
  },[query,open,composing]);
  useEffect(()=>{const close=()=>setOpen(false);window.addEventListener('hashchange',close);return()=>window.removeEventListener('hashchange',close);},[]);
- const select=item=>{setOpen(false);setActive(-1);setValue(item.label);location.hash=item.href;};
+ const select=item=>{setOpen(false);setActive(-1);setValue(item.label);if(item.href.startsWith('/guide/'))location.assign(item.href);else location.hash=item.href;};
  const {value:ignored,defaultValue:ignoredDefault,...inputProps}=props;
  return <span className="search-autocomplete" ref={ref} onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))setOpen(false);}}>
   <input {...inputProps} value={value} maxLength={100} autoComplete="off" role="combobox" aria-autocomplete="list" aria-expanded={open&&!!query&&!composing} aria-controls={listId} aria-activedescendant={active>=0?listId+'-'+active:undefined}

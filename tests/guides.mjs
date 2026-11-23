@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {onRequestGet as show} from '../functions/guide/[[slug]].js';
+import {onRequestPut as put,onRequestGet as get} from '../functions/api/guides/[[slug]].js';
+import {onRequestGet as sitemap} from '../functions/sitemap.xml.js';
+const sqlite=new DatabaseSync(':memory:');
+const DB={prepare(sql){let args=[];return {bind(...values){args=values;return this;},first(){return sqlite.prepare(sql).get(...args);},all(){return {results:sqlite.prepare(sql).all(...args)};},run(){return {meta:sqlite.prepare(sql).run(...args)};}};}};
+sqlite.exec('CREATE TABLE mm_products(id TEXT,published INTEGER,deleted INTEGER,payload TEXT)');
+sqlite.prepare('INSERT INTO mm_products VALUES(?,1,0,?)').run('p1',JSON.stringify({name:'초음파',model:'V7',image:'assets/test.jpg'}));
+const env={DB,GUIDE_PUBLISH_TOKEN:'test-only'};
+const draft={revision:0,published:false,productId:'p1',title:'초음파 안내',summary:'구성 안내',body:'## 구성\n\n<script>test</script>',images:['assets/test.jpg']};
+function ctx(path,slug,options){return {env,params:{slug},request:new Request('https://medicalmarket.co.kr'+path,options)};}
+const write=(payload,token='test-only')=>put(ctx('/api/guides/v7',['v7'],{method:'PUT',headers:{Authorization:'Bearer '+token},body:JSON.stringify(payload)}));
+const view=()=>show(ctx('/guide/v7',['v7']));
+assert.equal((await write(draft,'wrong')).status,403);
+assert.equal((await write({...draft,images:['https://invalid.test/test']})).status,400);
+assert.equal((await write(draft)).status,200);
+assert.equal((await view()).status,404);
+assert.equal((await write(draft)).status,409);
+assert.equal((await write({...draft,revision:1,published:true})).status,200);
+const html=await (await view()).text();
+for(const value of ['BlogPosting','&lt;script&gt;','product.html?id=p1','/assets/test.jpg','<h2>구성</h2>'])assert.ok(html.includes(value),value);
+assert.equal((await (await get(ctx('/api/guides?q=v7',[]))).json()).guides.length,1);
+assert.ok((await (await sitemap({env})).text()).includes('/guide/v7'));
+sqlite.exec('UPDATE mm_products SET deleted=1');
+assert.equal((await view()).status,404);
+assert.equal((await (await get(ctx('/api/guides',[]))).json()).guides.length,0);
+console.log('Guide API, visibility, rendering, search and sitemap passed');

@@ -1,3 +1,5 @@
+import GuideEditor from './guide-editor.jsx';
+import GuideResults from './guide-results.jsx';
 import SearchInput from './search-input.jsx';
 import React, { useLayoutEffect, useEffect, useState, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -14,7 +16,7 @@ export function SiteHeader({ route, favorites, authUser }) {
       <SearchInput name="query" aria-label="제품 검색" placeholder="어떤 의료장비를 찾으세요?"/>
       <button type="submit" aria-label="제품 검색 실행"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></button>
     </form>
-    <div className="member-header">{authUser?.role==='admin'?<a href="#ops" className="ops-link">운영 화면 ↗</a>:null}<a href={authUser?"#account":"#auth/login"}>{authUser?"마이페이지":"로그인"}</a>{!authUser?<a href="#auth/signup">회원가입</a>:null}</div>
+    <div className="member-header"><a href="/guide">제품 안내</a>{authUser?.role==='admin'?<a href="#ops" className="ops-link">운영 화면 ↗</a>:null}<a href={authUser?"#account":"#auth/login"}>{authUser?"마이페이지":"로그인"}</a>{!authUser?<a href="#auth/signup">회원가입</a>:null}</div>
   </header>;
 }
 
@@ -99,12 +101,12 @@ export function OperationsPage({ content }) { return <TemplateContent html={cont
 function Application(props) {
   // Background product/session updates must not remount the home hero and
   // restart its entrance animation. Form-heavy routes retain their reset key.
-  const pageKey=props.route==='home'||props.route.startsWith('home-')?'home':props.revision;
+  const pageKey=props.isAdmin&&props.adminPage==='guides'?'guide-editor':props.route==='home'||props.route.startsWith('home-')?'home':props.revision;
   return <>
     <SiteHeader route={props.route} favorites={props.favorites} authUser={props.authUser}/>
-    <main id="app"><div key={pageKey} style={{display:'contents'}} data-react-page={props.route}>
+    <main id="app">{props.route==='catalog'&&<GuideResults query={new URLSearchParams(location.hash.split('?')[1]).get('q')||''}/>}<div key={pageKey} style={{display:'contents'}} data-react-page={props.route}>
       {props.isAdmin?<AdminLayout page={props.adminPage} menus={props.menus} newRequests={props.newRequests} replyCount={props.replyCount}>
-        <OperationsPage content={props.content}/>
+        {props.adminPage==='guides'?<GuideEditor/>:<OperationsPage content={props.content}/>}
       </AdminLayout>:<CustomerPage content={props.content}/>}
     </div></main>
     <div id="toast" role="status" aria-live="polite"/>
