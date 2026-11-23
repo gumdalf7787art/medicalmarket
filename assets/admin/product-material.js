@@ -76,3 +76,49 @@ save.onclick=async()=>{
   }catch(e){progress.textContent=e.message;}finally{save.disabled=false;}
 };
 list().catch(e=>{progress.textContent=e.message;});
+
+// Full licensed descriptions keep inline photos separate from the curated card gallery.
+const detailStatus=document.querySelector('#detail-status');
+const detailButton=document.querySelector('#update-details');
+async function updateDetail(file){
+  const d=JSON.parse(await file.text());
+  if(typeof d.html!=='string'||!Array.isArray(d.images)||!d.images.length)throw Error('본문과 사진을 확인하세요.');
+  const parse=html=>new DOMParser().parseFromString(html,'text/html').body;
+  const body=parse(d.html);
+  const photos=Array.from(body.querySelectorAll('img'));
+  const indices=photos.map(img=>{
+    const match=/^MMIMAGE(\d+)END$/.exec(img.getAttribute('src'));
+    if(!match||Number(match[1])>=d.images.length)throw Error('본문 이미지 번호를 확인하세요.');
+    return Number(match[1]);
+  });
+  if(new Set(indices).size!==d.images.length||!body.textContent.trim())throw Error('본문에 연결된 사진과 설명을 확인하세요.');
+  const url='/api/cloud/products';
+  const query='?id='+encodeURIComponent(d.id);
+  const {product}=await api(url+query+'&admin=1');
+  if(!product.published||product.deleted||product.model!==d.model||product.maker!==d.maker)throw Error('공개 제품의 모델과 제조사가 일치해야 합니다.');
+  const media=[];
+  for(let i=0;i<d.images.length;i+=6){
+    detailStatus.textContent=d.model+' · 본문 사진 저장 '+i+' / '+d.images.length;
+    media.push(...await Promise.all(d.images.slice(i,i+6).map(image)));
+  }
+  photos.forEach((img,i)=>img.setAttribute('src',media[indices[i]]));
+  const saved=await api(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...product,descriptionHtml:body.innerHTML})});
+  const {product:live}=await api(url+query);
+  if(live.revision!==saved.product.revision||!live.published||live.descriptionHtml!==saved.product.descriptionHtml)throw Error('공개본을 확인하세요.');
+  const rendered=parse(live.descriptionHtml);
+  const actual=Array.from(rendered.querySelectorAll('img'),el=>el.getAttribute('src'));
+  if(JSON.stringify(actual)!==JSON.stringify(indices.map(n=>media[n]))||rendered.textContent.trim()!==body.textContent.trim())throw Error('저장된 본문 또는 사진을 확인하세요.');
+  return d.model+' · 본문 사진 '+actual.length+'개 공개 확인';
+}
+detailButton.onclick=async()=>{
+  const files=Array.from(document.querySelector('#detail-files').files);
+  if(!files.length){detailStatus.textContent='상세 원문 파일을 선택하세요.';return;}
+  detailButton.disabled=true;
+  const results=[];
+  try{
+    for(const file of files){
+      try{results.push(await updateDetail(file));}
+      catch(error){results.push(file.name+' · '+error.message);}
+    }
+  }finally{detailButton.disabled=false;detailStatus.textContent=results.join('\n');}
+};
