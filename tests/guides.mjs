@@ -33,6 +33,7 @@ const manage=(action,headers=admin)=>manageConnection(ctx('/api/guide-connection
 assert.equal((await manage('approve',{Origin:admin.Origin})).status,401);
 assert.equal((await manage('approve',{...admin,Origin:'https://example.com'})).status,403);
 assert.equal((await manage('approve')).status,200);
+sqlite.prepare('UPDATE mm_guide_connections SET expires_at=? WHERE id=?').run(Date.now()-1,id);
 assert.equal((await (await localStatus()).json()).state,'active');
 assert.equal((await get(ctx('/api/guides?admin=1',[],{headers:localHeaders}))).status,200);
 assert.equal((await write({...draft,published:true},localToken)).status,200);
