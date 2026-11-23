@@ -2,6 +2,7 @@ import {failure, json, sameOrigin, requireAdmin, bodyJson} from './cloud.js';
 import {supplierSchema} from './suppliers.js';
 import {sources, pilot, collect, compact} from './discovery-sources.js';
 import {discoveryPhoto} from './discovery-photo.js';
+import {prepareInbodyProduct} from './inbody-catalog.js';
 
 export async function discoverySchema(env) {
   await supplierSchema(env);
@@ -106,7 +107,7 @@ async function approve(env,data) {
   const statements=[claim];
   if(publishing) {
     const photo=await db.prepare('SELECT image FROM mm_discovery_photos WHERE supplier_id=? AND identity=?').bind(row.supplier_id,row.identity).first();
-    const product=discoveryPhoto({id,name:data.name.trim(),maker:row.maker,model:row.model,categoryIds:[data.category],published:true,deleted:false,image:photo?.image||'',gallery:photo?[photo.image]:[],imageFit:'contain',descriptionHtml:'',updatedAt:at});
+    const product=await prepareInbodyProduct(env,discoveryPhoto({id,name:data.name.trim(),maker:row.maker,model:row.model,categoryIds:[data.category],published:true,deleted:false,image:photo?.image||'',gallery:photo?[photo.image]:[],imageFit:'contain',descriptionHtml:'',updatedAt:at}));
     statements.push(db.prepare('INSERT INTO mm_products (id,payload,published,deleted,revision,updated_at) SELECT ?,?,1,0,1,? WHERE '+approved).bind(id,JSON.stringify(product),at,...guard));
   }
   statements.push(db.prepare('INSERT OR IGNORE INTO mm_supplier_products(supplier_id,product_id) SELECT ?,? WHERE '+approved).bind(row.supplier_id,id,...guard));
