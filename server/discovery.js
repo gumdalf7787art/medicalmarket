@@ -1,9 +1,11 @@
 import {failure, json, sameOrigin, requireAdmin, bodyJson} from './cloud.js';
 import {supplierSchema} from './suppliers.js';
 import {sources, pilot, collect, compact} from './discovery-sources.js';
+import {discoveryPhoto} from './discovery-photo.js';
 
 export async function discoverySchema(env) {
   await supplierSchema(env);
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_discovery_photos(supplier_id TEXT,identity TEXT,image TEXT NOT NULL,PRIMARY KEY(supplier_id,identity))').run();
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS mm_discovery (
     supplier_id TEXT NOT NULL, identity TEXT NOT NULL, maker TEXT NOT NULL, model TEXT NOT NULL,
     source_url TEXT NOT NULL, observed_at TEXT NOT NULL, decision TEXT DEFAULT '', product_id TEXT DEFAULT '', approval_token TEXT DEFAULT '',
@@ -57,6 +59,9 @@ export async function stage(env,key,items,date) {
     (supplier_id,identity,maker,model,source_url,observed_at) VALUES(?,?,?,?,?,?)
     ON CONFLICT(supplier_id,identity) DO UPDATE SET source_url=excluded.source_url, observed_at=excluded.observed_at
     WHERE excluded.observed_at >= mm_discovery.observed_at`).bind(supplier.id,compact(source.maker)+'/'+compact(model),source.maker,model,url||source.url,date));
+  for(const item of items.filter(item=>item.image)){
+    rows.push(env.DB.prepare('INSERT OR REPLACE INTO mm_discovery_photos VALUES(?,?,?)').bind(supplier.id,compact(source.maker)+'/'+compact(item.model),item.image));
+  }
   for(let i=0;i<rows.length;i+=40) await env.DB.batch(rows.slice(i,i+40));
 }
 
@@ -100,7 +105,8 @@ async function approve(env,data) {
     .bind(publishing?'published':'connected',id,token,row.supplier_id,row.identity,products.length,revisionTotal);
   const statements=[claim];
   if(publishing) {
-    const product={id,name:data.name.trim(),maker:row.maker,model:row.model,categoryIds:[data.category],published:true,deleted:false,image:'',gallery:[],imageFit:'contain',descriptionHtml:'',updatedAt:at};
+    const photo=await db.prepare('SELECT image FROM mm_discovery_photos WHERE supplier_id=? AND identity=?').bind(row.supplier_id,row.identity).first();
+    const product=discoveryPhoto({id,name:data.name.trim(),maker:row.maker,model:row.model,categoryIds:[data.category],published:true,deleted:false,image:photo?.image||'',gallery:photo?[photo.image]:[],imageFit:'contain',descriptionHtml:'',updatedAt:at});
     statements.push(db.prepare('INSERT INTO mm_products (id,payload,published,deleted,revision,updated_at) SELECT ?,?,1,0,1,? WHERE '+approved).bind(id,JSON.stringify(product),at,...guard));
   }
   statements.push(db.prepare('INSERT OR IGNORE INTO mm_supplier_products(supplier_id,product_id) SELECT ?,? WHERE '+approved).bind(row.supplier_id,id,...guard));

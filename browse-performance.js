@@ -31,15 +31,15 @@ async function loadProductDetail(p){
   managementState.products[key]=row;applyManagedProducts();return row;
  }).finally(()=>{detailLoads.delete(key);});detailLoads.set(key,promise);return promise;
 }
-let detailError='';
+const detailErrors=new Map();
 function cloudDetailView(p){
- const current=location.href;
- if(!detailError)loadProductDetail(p).then(()=>{if(location.href===current)render();}).catch(error=>{detailError=error.message;if(location.href===current)render();});
- return `<div class="browse-content"><h1>${e(p.name)}</h1>${p.image?`<img class="detail-loading-photo" src="${e(productThumbnail(p.image))}" alt="${e(p.name)}">`:''}<p role="status">${detailError?e(detailError):'상세 설명을 불러오는 중입니다.'}</p>${detailError?'<button data-detail-retry>다시 불러오기</button>':''}</div>`;
+ const current=location.href,detailError=detailErrors.get(p.id);
+ if(!detailError)loadProductDetail(p).then(()=>{if(location.href===current)render();}).catch(error=>{detailErrors.set(p.id,error.message);if(location.href===current)render();});
+ return `<div class="browse-content"><h1>${e(p.name)}</h1>${p.image?`<img class="detail-loading-photo" src="${e(productThumbnail(p.image))}" alt="${e(p.name)}">`:''}<p role="status">${detailError?e(detailError):'상세 설명을 불러오는 중입니다.'}</p>${detailError?'<button data-detail-retry="${e(p.id)}">다시 불러오기</button>':''}</div>`;
 }
 document.addEventListener('click',event=>{
  if(event.target.closest('[data-catalog-retry]')){catalogPages.delete(JSON.stringify(catalogLocation()));render();}
- if(event.target.closest('[data-detail-retry]')){detailError='';render();}
+ if(event.target.closest('[data-detail-retry]')){detailErrors.delete(event.target.closest('[data-detail-retry]').dataset.detailRetry);render();}
 });
 // Warm only the product the visitor is about to open, not all descriptions.
 let prefetching=false;

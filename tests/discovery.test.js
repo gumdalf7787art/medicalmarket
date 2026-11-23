@@ -53,6 +53,8 @@ test('private pilot, repeat imports and explicit approval of publication or supp
   assert.equal((await call(approve)).status,409);
   const product=db.prepare('SELECT * FROM mm_products').get();
   assert.equal(product.published,1);
+  assert.match(JSON.parse(product.payload).image,/^https:\/\/www\.bistos\.co\.kr\//);
+  assert.deepEqual(JSON.parse(product.payload).gallery,[JSON.parse(product.payload).image]);
   db.prepare('DELETE FROM mm_supplier_products').run();
   db.prepare("UPDATE mm_discovery SET decision='' WHERE identity=?").run(first.identity);
   assert.equal((await call(approve)).status,409);

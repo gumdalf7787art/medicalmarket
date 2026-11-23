@@ -161,6 +161,7 @@ export async function collect(key, mirror=false) {
   }
   if (!response.ok) throw failure('공식 사이트가 HTTP '+response.status+'로 응답했습니다.',422);
   const found = new Map();
+  const photosByLink=new Map();
   let current;
   const anchors = {
     element(el) {
@@ -172,13 +173,19 @@ export async function collect(key, mirror=false) {
       current = anchor;
       el.onEndTag(()=>{
         const model = modelFromLink(key,url,anchor.text);
-        if (model) found.set(compact(model),{model,url:url.href});
+        if (model && (!found.has(compact(model))||photosByLink.has(url.href))) found.set(compact(model),{model,url:url.href});
         current = null;
       });
     },
     text(chunk) { if (current && current.text.length < 1000) current.text += chunk.text; }
   };
-  await new HTMLRewriter().on('a[href]',anchors).transform(response).arrayBuffer();
+  await new HTMLRewriter().on('a[href]',anchors).on('a[href] img[src]',{element(el){
+    if(!current)return;
+    let url;
+    try { url=new URL(el.getAttribute('src'),sourceUrl); } catch {return;}
+    if(trusted(url)||(key==='inbody'&&url.origin==='https://inbodyinfra.blob.core.windows.net'))
+      photosByLink.set(current.url.href,url.href);
+  }}).transform(response).arrayBuffer();
   if (!found.size) throw failure('공식 페이지에서 모델 링크를 찾지 못했습니다.',422);
-  return [...found.values()];
+  return [...found.values()].map(item=>({...item,image:photosByLink.get(item.url)||''}));
 }
