@@ -61,6 +61,7 @@ function cloudSupplierForm(row){
 }
 
 function cloudSupplierManagement(page='suppliers'){
+  if(page==='suppliers?discovery=1')return discoveryPanel();
   const params=new URLSearchParams(page.includes('?')?page.slice(page.indexOf('?')+1):''),directId=params.get('edit')||'',returnId=params.get('return')||'';
   if(directId&&!cloudSupplierDirect.has(directId)&&!cloudSupplierDirectLoading.has(directId)&&!cloudSupplierDirectFailed.has(directId))queueMicrotask(()=>loadCloudSupplierDirect(directId));
   if(!cloudSupplierRows&&!cloudSupplierBusy)queueMicrotask(loadCloudSuppliers);
@@ -68,7 +69,7 @@ function cloudSupplierManagement(page='suppliers'){
   const editing=directId?cloudSupplierDirect.get(directId):cloudSupplierEditing==='new'?null:rows.find(row=>row.id===cloudSupplierEditing);
   return `${adminHeading('공급업체 관리','업체·복수 담당자·취급 제품을 운영자 전용 D1에 저장합니다.')}
     ${returnId?`<p><a class="member-back" data-cloud-supplier-return href="#ops/requests?id=${encodeURIComponent(returnId)}">← 견적 요청으로 돌아가기</a></p>`:''}
-    <div class="actions"><button type="button" data-cloud-supplier-new>업체 등록</button><button type="button" data-cloud-supplier-refresh>새로고침</button></div>
+    <div class="actions"><button type="button" data-cloud-supplier-new>업체 등록</button><button type="button" data-cloud-supplier-refresh>새로고침</button><a href="#ops/suppliers?discovery=1">공식 홈페이지 장비 검토</a></div>
     ${cloudSupplierError?`<p class="notice warn" role="alert">${e(cloudSupplierError)}</p>`:''}
     ${directId?editing?cloudSupplierForm(editing):cloudSupplierDirectFailed.has(directId)?`<button type="button" data-cloud-supplier-direct-retry="${e(directId)}">회사 정보 다시 불러오기</button>`:'<section class="admin-panel"><p role="status">해당 회사 정보를 불러오고 있습니다.</p></section>':cloudSupplierEditing?cloudSupplierForm(editing):''}
     <section class="admin-panel"><h2>기존 공급업체 자료 이관</h2><p>로컬 통합 목록 JSON을 선택하면 기존 업체와 확인이 필요한 후보를 구분해 비공개 D1에 저장합니다. 동일 원본은 다시 올려도 중복 등록되지 않습니다.</p>
@@ -154,4 +155,67 @@ document.addEventListener('click',event=>{
   if(button.dataset.cloudSupplierPage){cloudSupplierPage+=button.dataset.cloudSupplierPage==='next'?1:-1;cloudSupplierRows=null;render();}
   if(button.hasAttribute('data-supplier-contact-add'))document.getElementById('supplier-contacts')?.insertAdjacentHTML('beforeend',supplierContactFields());
   if(button.hasAttribute('data-supplier-contact-remove'))button.closest('.supplier-contact-row')?.remove();
+});
+
+const discoverySuppliers={inbody:'인바디',alpinion:'알피니언메디칼시스템',bistos0340:'비스토스'};
+let discoveryRows=null,discoveryBusy=false,discoveryMessage='';
+async function discoveryRequest(data) {
+  const response=await fetch('/api/discovery',{cache:'no-store',...(data?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}:{})});
+  if(!response.headers.get('content-type')?.includes('application/json'))throw Error('장비 검토 API 배포 상태를 확인해 주세요.');
+  const result=await response.json();
+  if(!response.ok)throw Error(result.error||'장비 검토 요청이 실패했습니다.');
+  return result;
+}
+function discoveryRow(row,index) {
+  const labels={draft:'비공개 초안',candidate:'공급업체 연결 후보',compare:'모델 비교 필요',linked:'이미 연결됨',published:'공개 완료',connected:'연결 완료'};
+  const status=row.decision||row.kind;
+  const options=row.matches.map(p=>`<option value="${e(p.id)}">${e(p.name)} · ${e(p.model)} · ${e(p.id)}</option>`).join('');
+  return `<tr><td>${e(row.company)}</td><td><strong>${e(row.model)}</strong><br>${e(row.maker)} · <a target="_blank" rel="noopener noreferrer" href="${e(row.source_url)}">공식 원문</a></td><td>${labels[status]}</td><td>
+    ${status==='draft'?`<details><summary>초안 검토</summary><form data-discovery-review="${index}"><label>공개 제품명<input name="name" value="${e(row.model)}" required maxlength="300"></label><label>대표 카테고리<select name="category" required>${categoryOptions()}</select></label><button>확인 후 공개</button></form></details>`:['candidate','compare'].includes(status)?`<form data-discovery-review="${index}"><label>기존 제품<select name="product" required><option value="">비교 후 선택</option>${options}</select></label><button>공급업체 연결 승인</button></form>`:''}</td></tr>`;
+}
+function discoveryPanel() {
+  if(discoveryRows===null&&!discoveryBusy)queueMicrotask(()=>updateDiscovery('refresh'));
+  return `${adminHeading('공식 홈페이지 장비 검토','제조사와 모델명을 기존 제품과 대조합니다. 원문을 확인한 뒤 공개하거나 공급업체 연결을 승인하세요.')}
+    <p><a href="#ops/suppliers">← 공급업체 관리</a></p><section class="admin-panel">
+    <div class="actions"><button data-discovery="scan">공식 목록 다시 수집</button><button data-discovery="pilot">11월 23일 시범 목록 불러오기</button><button data-discovery="refresh">검토 목록 새로고침</button></div>
+    <p role="status">${e(discoveryBusy?'처리 중입니다.':discoveryMessage)}</p>
+    <div class="table-wrap"><table class="admin-table"><thead><tr><th>공급업체</th><th>모델·제조사</th><th>상태</th><th>검토</th></tr></thead><tbody>${(discoveryRows||[]).map(discoveryRow).join('')}</tbody></table></div>
+    ${discoveryRows?.length===0?'<p>저장된 장비가 없습니다.</p>':''}</section>`;
+}
+async function updateDiscovery(action,review) {
+  if(discoveryBusy)return;
+  discoveryBusy=true;
+  const messages=[];
+  try {
+    if(review) {
+      await discoveryRequest(review);
+      messages.push(review.action==='publish'?'제품을 공개했습니다.':'공급업체를 연결했습니다.');
+      cloudSupplierRows=null;
+      cloudSupplierDirect.clear();
+      await cloudLoadProducts();
+    } else if(action!=='refresh') {
+      for(const [key,name] of Object.entries(discoverySuppliers)) {
+        try { const result=await discoveryRequest({action,key});messages.push(name+' '+result.count+'건 확인'); }
+        catch(error){messages.push(name+' · '+error.message);}
+      }
+    }
+    discoveryRows=(await discoveryRequest()).rows;
+  }catch(error){messages.push(error.message);discoveryRows??=[];}
+  finally {
+    discoveryMessage=messages.join(' / ');discoveryBusy=false;
+    if(location.hash==='#ops/suppliers?discovery=1')render();
+  }
+}
+document.addEventListener('click',event=>{
+  const action=event.target.closest('[data-discovery]')?.dataset.discovery;
+  if(action&&!discoveryBusy){void updateDiscovery(action);render();}
+});
+document.addEventListener('submit',event=>{
+  const form=event.target.closest('form[data-discovery-review]');
+  if(!form)return;
+  event.preventDefault();
+  if(discoveryBusy)return;
+  const row=discoveryRows[Number(form.dataset.discoveryReview)],fields=Object.fromEntries(new FormData(form));
+  void updateDiscovery('review',{action:fields.product?'link':'publish',supplier:row.supplier_id,identity:row.identity,...fields});
+  render();
 });
