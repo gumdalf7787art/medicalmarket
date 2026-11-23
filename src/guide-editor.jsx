@@ -1,4 +1,5 @@
 import React,{useState,useEffect} from 'react';
+import {guideProductLabel} from '../shared/guide-product-label.js';
 import './guide-editor.css';
 const empty={slug:'',productId:'',title:'',summary:'',body:'',images:[],revision:0,published:false};
 async function api(url,options){
@@ -47,7 +48,7 @@ export default function GuideEditor(){
       {form.images[0]&&<img src={form.images[0]} alt={product?.name}/>}
       {form.body.split(/\n\s*\n/).map((part,i)=>part.startsWith('## ')?<h3 key={i}>{part.slice(3)}</h3>:<p key={i}>{part}</p>)}
       {form.images.slice(1).map(url=><img key={url} src={url} alt={product?.name}/>)}
-      {product&&<div><div><small>메디컬마켓</small></div><a href={'/product.html?id='+encodeURIComponent('managed-'+product.id)} target="_blank" rel="noreferrer">{product.name} 자세히 보러 가기 (견적 요청 가능)</a></div>}
+      {product&&<div><div><small>메디컬마켓</small></div><a href={'/product.html?id='+encodeURIComponent('managed-'+product.id)} target="_blank" rel="noreferrer">{guideProductLabel(product.id,product.name)} 자세히 보러 가기 (견적 요청 가능)</a></div>}
     </article></details>
     <button onClick={()=>store(false)}>{form.published?'비공개 전환':'초안 저장'}</button><button onClick={()=>store(true)}>발행 저장</button>{form.revision>0&&form.published&&<a href={'/guide/'+form.slug}>공개 글 보기</a>}</fieldset><p role="status">{message}</p></section>;
 }
