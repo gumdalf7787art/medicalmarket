@@ -146,10 +146,20 @@ export function modelFromLink(key, url, label) {
 }
 
 export async function collect(key, mirror=false) {
-  const sourceUrl = mirror ? sources[key].mirror : sources[key].url;
+  let sourceUrl = mirror ? sources[key].mirror : sources[key].url;
   if (!sourceUrl) throw failure('공식 목록 주소를 확인해 주세요.');
-  const response = await fetch(sourceUrl,{redirect:'manual',signal:AbortSignal.timeout(12000)});
-  if (!response.ok) throw failure('공식 목록을 읽지 못했습니다. HTTP '+response.status,502);
+  const hosts = new Set([sources[key].url,sources[key].mirror].filter(Boolean).map(value=>new URL(value).hostname.replace(/^www\./,'')));
+  const trusted = url=>url.protocol==='https:'&&!url.username&&!url.password&&!url.port&&hosts.has(url.hostname.replace(/^www\./,''));
+  let response;
+  for(let hop=0;hop<4;hop++){
+    try { response = await fetch(sourceUrl,{redirect:'manual',signal:AbortSignal.timeout(12000),headers:{Accept:'text/html','Accept-Language':'ko-KR,ko;q=0.9,en;q=0.7'}}); }
+    catch { throw failure('공식 사이트 연결 시간 초과 또는 접속 제한',422); }
+    if(![301,302,303,307,308].includes(response.status))break;
+    const next=new URL(response.headers.get('location')||'',sourceUrl);
+    if(!trusted(next))throw failure('공식 목록 이동 주소를 확인해 주세요.',422);
+    sourceUrl=next.href;
+  }
+  if (!response.ok) throw failure('공식 사이트가 HTTP '+response.status+'로 응답했습니다.',422);
   const found = new Map();
   let current;
   const anchors = {
@@ -157,7 +167,7 @@ export async function collect(key, mirror=false) {
       current = null;
       let url;
       try { url = new URL(el.getAttribute('href'),sourceUrl); } catch { return; }
-      if (![new URL(sourceUrl).origin,new URL(sources[key].url).origin].includes(url.origin)) return;
+      if (!trusted(url)) return;
       const anchor = {url,text:''};
       current = anchor;
       el.onEndTag(()=>{
@@ -169,6 +179,6 @@ export async function collect(key, mirror=false) {
     text(chunk) { if (current && current.text.length < 1000) current.text += chunk.text; }
   };
   await new HTMLRewriter().on('a[href]',anchors).transform(response).arrayBuffer();
-  if (!found.size) throw failure('모델 링크를 찾지 못했습니다. 공식 목록의 주소 또는 형식을 확인해 주세요.',502);
+  if (!found.size) throw failure('공식 페이지에서 모델 링크를 찾지 못했습니다.',422);
   return [...found.values()];
 }
