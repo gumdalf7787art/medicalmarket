@@ -61,4 +61,18 @@ test('private pilot, repeat imports and explicit approval of publication or supp
   assert.equal((await call({...approve,action:'link',product:product.id})).status,200);
   assert.equal(db.prepare('SELECT count(*) n FROM mm_supplier_products').get().n,1);
   assert.equal(db.prepare('SELECT count(*) n FROM mm_products').get().n,1);
+  const path='/media/'+crypto.randomUUID()+'.webp';
+  env.MEDIA={head:async key=>key==='product-images/'+path.slice(7)?{}:null};
+  const draft={action:'prepare',supplier:inbody.supplier_id,identity:inbody.identity,gallery:[path],paragraphs:['A < B']};
+  assert.equal((await call({...draft,gallery:['https://example.test/image']})).status,400);
+  const {version}=await (await call(draft)).json();
+  assert.ok(version);
+  const publish={...draft,action:'publish',name:inbody.model,category:'20f010',version};
+  assert.equal((await call({...publish,version:'stale'})).status,409);
+  assert.equal(db.prepare('SELECT count(*) n FROM mm_products').get().n,1);
+  const published=await (await call(publish)).json();
+  const saved=JSON.parse(db.prepare('SELECT payload FROM mm_products WHERE id=?').get(published.product).payload);
+  assert.equal(saved.image,path);
+  assert.deepEqual(saved.gallery,[path]);
+  assert.equal(saved.descriptionHtml,'<p>A &lt; B</p>');
 });

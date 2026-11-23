@@ -4,8 +4,11 @@ import {sources, pilot, collect, compact} from './discovery-sources.js';
 import {discoveryPhoto} from './discovery-photo.js';
 import {prepareInbodyProduct} from './inbody-catalog.js';
 
+import {saveMaterial} from './discovery-material.js';
+
 export async function discoverySchema(env) {
   await supplierSchema(env);
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_discovery_material(supplier_id TEXT,identity TEXT,payload TEXT NOT NULL,version TEXT NOT NULL,PRIMARY KEY(supplier_id,identity))').run();
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS mm_discovery_photos(supplier_id TEXT,identity TEXT,image TEXT NOT NULL,PRIMARY KEY(supplier_id,identity))').run();
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS mm_discovery (
     supplier_id TEXT NOT NULL, identity TEXT NOT NULL, maker TEXT NOT NULL, model TEXT NOT NULL,
@@ -100,19 +103,24 @@ async function approve(env,data) {
   const token=crypto.randomUUID();
   const approved="EXISTS(SELECT 1 FROM mm_discovery WHERE supplier_id=? AND identity=? AND approval_token=?)";
   const guard=[row.supplier_id,row.identity,token];
+  const material=publishing ? await db.prepare('SELECT version,payload FROM mm_discovery_material WHERE supplier_id=? AND identity=?').bind(row.supplier_id,row.identity).first() : null;
+  if (data.version && data.version!==material?.version) throw failure('Review version changed.',409);
+  const materialGuard=publishing ? " AND COALESCE((SELECT version FROM mm_discovery_material WHERE supplier_id=? AND identity=?),'')=?" : '';
   const claim=db.prepare(`UPDATE mm_discovery SET decision=?, product_id=?, approval_token=?
     WHERE supplier_id=? AND identity=? AND decision='' AND (SELECT COUNT(*) FROM mm_products WHERE deleted=0)=?
-    AND (SELECT COALESCE(SUM(revision),0) FROM mm_products WHERE deleted=0)=?`)
-    .bind(publishing?'published':'connected',id,token,row.supplier_id,row.identity,products.length,revisionTotal);
+    AND (SELECT COALESCE(SUM(revision),0) FROM mm_products WHERE deleted=0)=?`+materialGuard)
+    .bind(publishing?'published':'connected',id,token,row.supplier_id,row.identity,products.length,revisionTotal,...(publishing?[row.supplier_id,row.identity,material?.version||'']:[]));
   const statements=[claim];
   if(publishing) {
     const photo=await db.prepare('SELECT image FROM mm_discovery_photos WHERE supplier_id=? AND identity=?').bind(row.supplier_id,row.identity).first();
-    const product=await prepareInbodyProduct(discoveryPhoto({id,name:data.name.trim(),maker:row.maker,model:row.model,categoryIds:[data.category],published:true,deleted:false,image:photo?.image||'',gallery:photo?[photo.image]:[],imageFit:'contain',descriptionHtml:'',updatedAt:at}));
+    const base={id,name:data.name.trim(),maker:row.maker,model:row.model,categoryIds:[data.category],published:true,deleted:false,image:photo?.image||'',gallery:photo?[photo.image]:[],imageFit:'contain',descriptionHtml:'',updatedAt:at};
+    const product=material?{...base,...JSON.parse(material.payload)}:await prepareInbodyProduct(discoveryPhoto(base));
     statements.push(db.prepare('INSERT INTO mm_products (id,payload,published,deleted,revision,updated_at) SELECT ?,?,1,0,1,? WHERE '+approved).bind(id,JSON.stringify(product),at,...guard));
   }
   statements.push(db.prepare('INSERT OR IGNORE INTO mm_supplier_products(supplier_id,product_id) SELECT ?,? WHERE '+approved).bind(row.supplier_id,id,...guard));
   const result=await db.batch(statements);
   if(result[0].meta.changes!==1) throw failure('다른 화면에서 목록이 변경되었습니다. 다시 확인해 주세요.',409);
+  return id;
 }
 
 export async function discoveryAction({request,env}) {
@@ -121,7 +129,8 @@ export async function discoveryAction({request,env}) {
   await discoverySchema(env);
   if(request.method==='GET') return json({rows:await listDiscovery(env)});
   if(request.method!=='POST') throw failure('지원하지 않는 요청입니다.',405);
-  const data=await bodyJson(request,3000);
+  const data=await bodyJson(request,240000);
+  if(data.action==='prepare') return json(await saveMaterial(env,data));
   if(data.action==='category'){
     if(typeof data.category!=='string'||!/^([a-z0-9]{2}){1,3}$/.test(data.category))throw failure('대표 카테고리를 선택해 주세요.');
     const result=await env.DB.prepare(`INSERT INTO mm_discovery_categories(supplier_id,identity,category)
@@ -137,7 +146,7 @@ export async function discoveryAction({request,env}) {
     return json({count:items.length});
   }
   if(!['publish','link'].includes(data.action)) throw failure('처리 유형을 확인해 주세요.');
-  await approve(env,data);
-  return json({ok:true});
+  const product=await approve(env,data);
+  return json({ok:true,product});
 }
 
