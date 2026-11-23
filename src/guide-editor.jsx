@@ -47,7 +47,7 @@ export default function GuideEditor(){
       {form.images[0]&&<img src={form.images[0]} alt={product?.name}/>}
       {form.body.split(/\n\s*\n/).map((part,i)=>part.startsWith('## ')?<h3 key={i}>{part.slice(3)}</h3>:<p key={i}>{part}</p>)}
       {form.images.slice(1).map(url=><img key={url} src={url} alt={product?.name}/>)}
-      {product&&<a href={'/product.html?id='+encodeURIComponent(product.id)} target="_blank" rel="noreferrer">{product.model||product.name} 상세 사양 보기 →</a>}
+      {product&&<a href={'/#request/'+encodeURIComponent(product.id)} target="_blank" rel="noreferrer">견적 요청하기 →</a>}
     </article></details>
     <button onClick={()=>store(false)}>{form.published?'비공개 전환':'초안 저장'}</button><button onClick={()=>store(true)}>발행 저장</button>{form.revision>0&&form.published&&<a href={'/guide/'+form.slug}>공개 글 보기</a>}</fieldset><p role="status">{message}</p></section>;
 }

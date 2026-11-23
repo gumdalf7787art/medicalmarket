@@ -2,8 +2,22 @@ let socialCompletionStarted=false,authMembersBootstrap=false;
 let authUser=null,authReady=false,authProviders={},authEmailReady=false,authNotice='',authBusy=false,authMembers=null,authMembersNext=null,authMemberOffset=0,authMemberQuery='',authBootstrap=false,authLegacyView=false,authLegacyTotal=0,authLegacyCredentials=0,authMemberTotal=0;
 async function authFetch(path,data){const response=await fetch('/api/auth/'+path,{credentials:'same-origin',cache:'no-store',...(data?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}:{})});const result=await response.json();if(!response.ok)throw Error(result.error||'로그인 처리에 실패했습니다.');return result;}
 function authConsent(){return `<label class="auth-consent"><input type="checkbox" name="consent" required> <span>개인정보 수집·이용에 동의합니다. (필수)</span></label><details><summary>수집·이용 내용 보기</summary><p>회원 식별 및 서비스 이용을 위해 이름, 이메일, 로그인 제공자의 회원 식별값을 수집합니다. 이메일 가입 시 비밀번호는 복원이 불가능한 해시 형태로 저장합니다. 회원 탈퇴 시 삭제하며, 법령에 따라 보관해야 하는 자료는 해당 기간 동안 별도로 보관합니다.</p></details>`;}
+const GUIDE_QUOTE_LOGIN_KEY='mm-guide-quote-login';
+function guideQuoteAfterLogin(){
+ try{
+  const productId=sessionStorage.getItem(GUIDE_QUOTE_LOGIN_KEY);
+  sessionStorage.removeItem(GUIDE_QUOTE_LOGIN_KEY);
+  if(productId)return '#request/'+productId;
+ }catch{/* Login also works when session storage is unavailable. */}
+ return '#home';
+}
 function authPage(mode='login'){
  const [view,query='']=mode.split('?'),params=new URLSearchParams(query),token=params.get('token')||'';
+ if(view==='login')try{
+  const productId=params.get('guideProduct');
+  if(productId)sessionStorage.setItem(GUIDE_QUOTE_LOGIN_KEY,productId);
+  else sessionStorage.removeItem(GUIDE_QUOTE_LOGIN_KEY);
+ }catch{/* Login also works when session storage is unavailable. */}
  if(view==='social'){
   if(!socialCompletionStarted){socialCompletionStarted=true;queueMicrotask(completePendingSocial);}
   return `<section class="auth-page"><div class="auth-card"><p role="status">${e(authNotice||'로그인을 마치고 홈으로 이동하고 있습니다.')}</p>${authNotice?'<a href="#auth/login">로그인 다시 하기</a>':''}</div></section>`;
@@ -50,7 +64,7 @@ document.addEventListener('submit',async event=>{
  if(event.target.id!=='member-auth')return;event.preventDefault();if(authBusy)return;
  const form=event.target,data=Object.fromEntries(new FormData(form));data.consent=data.consent==='on';if(data.passwordConfirm!==undefined&&data.passwordConfirm!==data.password){authNotice='비밀번호가 일치하지 않습니다.';form.querySelector('[role=status]').textContent=authNotice;return;}
  authBusy=true;form.querySelector('button').disabled=true;authNotice='';
- try{const result=await authFetch(form.dataset.action,data);if(result.user){adoptAuthUser(result.user);await cloudLoadProducts();location.hash='#home';}else{authNotice=result.message||'완료했습니다.';if(form.dataset.action==='reset')location.hash='#auth/login';}}
+ try{const result=await authFetch(form.dataset.action,data);if(result.user){adoptAuthUser(result.user);await cloudLoadProducts();location.hash=guideQuoteAfterLogin();}else{authNotice=result.message||'완료했습니다.';if(form.dataset.action==='reset')location.hash='#auth/login';}}
  catch(error){authNotice=error.message;}finally{authBusy=false;render();}
 });
 document.addEventListener('click',async event=>{
@@ -89,6 +103,6 @@ async function completePendingSocial(){
   const session=await authFetch('session');
   const result=session.user?session:await authFetch('social',{});
   if(!result.user)throw Error('SNS 로그인을 다시 진행해 주세요.');
-  adoptAuthUser(result.user);location.hash='#home';render();
+  adoptAuthUser(result.user);location.hash=guideQuoteAfterLogin();render();
  }catch(error){authNotice='로그인 시간이 만료되었거나 연결을 완료하지 못했습니다. 로그인 화면에서 다시 시작해 주세요.';if(location.hash==='#auth/social')render();}
 }
