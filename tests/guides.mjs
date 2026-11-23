@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {guideProductLabel} from '../shared/guide-product-label.js';
 import {DatabaseSync} from 'node:sqlite';
 import {onRequestGet as show} from '../functions/guide/[[slug]].js';
 import {onRequestPut as put,onRequestGet as get} from '../functions/api/guides/[[slug]].js';
@@ -25,4 +26,6 @@ assert.ok((await (await sitemap({env})).text()).includes('/guide/v7'));
 sqlite.exec('UPDATE mm_products SET deleted=1');
 assert.equal((await view()).status,404);
 assert.equal((await (await get(ctx('/api/guides',[]))).json()).guides.length,0);
+assert.equal(guideProductLabel('legacy-1681439960','등록 상품명'),'병원용 혈압계 BPBIO320_내장');
+assert.equal(guideProductLabel('p1','초음파'),'초음파');
 console.log('Guide API, visibility, rendering, search and sitemap passed');
