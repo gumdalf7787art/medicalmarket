@@ -198,6 +198,7 @@ def run(args, api):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='action', required=True)
+    commands.add_parser('session', help='Run JSON argument arrays from stdin with one authenticated session')
     commands.add_parser('list')
     commands.add_parser('scan').add_argument('key', choices=HOSTS)
     get = commands.add_parser('collect')
@@ -218,7 +219,17 @@ def main():
         commands.add_parser(action).add_argument('file', type=Path)
     args = parser.parse_args()
     try:
-        print(json.dumps(run(args, Market()), ensure_ascii=False, indent=2))
+        api = Market()
+        if args.action == 'session':
+            for line in sys.stdin:
+                if not line.strip():
+                    continue
+                argv = json.loads(line)
+                if not isinstance(argv, list) or not argv or not all(isinstance(v, str) for v in argv) or argv[0] == 'session':
+                    raise ValueError('Expected a JSON array of command arguments')
+                print(json.dumps(run(parser.parse_args(argv), api), ensure_ascii=False), flush=True)
+        else:
+            print(json.dumps(run(args, api), ensure_ascii=False, indent=2))
     except HTTPError as error:
         sys.exit(f'HTTP {error.code} at {error.url}: {error.read(500).decode(errors="replace")}')
     except (ValueError, KeyError, OSError) as error:

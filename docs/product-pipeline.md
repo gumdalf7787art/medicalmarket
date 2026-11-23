@@ -12,3 +12,5 @@
 이미지 파일과 제품 데이터는 운영 API에 바로 저장되며 제품마다 사이트 재배포할 필요가 없다. 제품 공개 응답이 유실되면 list에서 결정과 product_id를 먼저 확인한다.
 
 제조사가 상세 정보를 JSON으로 제공하면 collect에 `--json-url 공식_API_URL --record data.products.0 --model-field model --text-field paragraphs --images-field images`를 붙인다. record와 필드명은 실제 응답 구조에 맞춰 지정한다. 모델명이 일치하는 레코드의 본문 문자열과 사진 URL 배열을 수집한다.
+
+여러 제품 작업은 `python scripts/product-pipeline.py session`을 한 번 시작해 관리자 세션을 재사용한다. 표준 입력에 한 줄씩 JSON 배열(예: `["scan","inbody"]`, `["list"]`)을 보내면 각 명령이 JSON 한 줄로 응답한다. 검토가 끝난 파일만 publish 명령으로 전달한다.
