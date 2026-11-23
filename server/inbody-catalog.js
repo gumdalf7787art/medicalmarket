@@ -1,60 +1,18 @@
-import {failure,limitedBody} from './cloud.js';
 import {inbodyCatalog} from './inbody-catalog-data.js';
 
 const escapeHtml=value=>value.replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[char]);
 const textBytes=new TextEncoder();
 
-export const inbodyPhotoCount=(maker,model)=>maker==='인바디'&&Object.hasOwn(inbodyCatalog,model)?inbodyCatalog[model].images.length:0;
-
-async function saveOfficialImage(bucket,address,download){
-  const url=new URL(address);
-  const webp=url.origin==='https://inbody.com' && /^\/images\/products\/category\/body_composition\/inbody[a-z0-9]+\/[a-z0-9_]+\.webp$/.test(url.pathname);
-  const png=url.origin==='https://inbodyinfra.blob.core.windows.net' && /^\/inbodyhome\/prod\/product\/[^/]+\.png$/.test(url.pathname);
-  if(!webp&&!png)throw failure('인바디 공식 사진 주소를 확인해 주세요.',422);
-  const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',textBytes.encode(address))),byte=>byte.toString(16).padStart(2,'0')).join('');
-  const id=hash.slice(0,32).replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,'$1-$2-$3-$4-$5');
-  const extension=webp?'webp':'png';
-  const name=id+'.'+extension;
-  const key='product-images/'+name;
-  if(!await bucket.head(key)){
-    if(!download)throw failure('공식 사진을 먼저 저장해 주세요.',409);
-    const response=await fetch(url,{redirect:'error',signal:AbortSignal.timeout(12000)});
-    if(!response.ok)throw failure('인바디 공식 이미지 응답을 확인해 주세요.',502);
-    const bytes=await limitedBody(response,8*1024*1024);
-    const ascii=(start,end)=>String.fromCharCode(...bytes.slice(start,end));
-    const valid=webp
-      ?ascii(0,4)==='RIFF' && ascii(8,12)==='WEBP'
-      :[137,80,78,71,13,10,26,10].every((byte,index)=>bytes[index]===byte);
-    if(!valid)throw failure('공식 이미지 파일 형식을 확인해 주세요.',502);
-    await bucket.put(key,bytes,{httpMetadata:{contentType:'image/'+extension}});
-  }
-  return '/media/'+name;
+async function photoPath(address){
+  const digest=await crypto.subtle.digest('SHA-256',textBytes.encode(address));
+  const key=Array.from(new Uint8Array(digest).slice(0,16),byte=>byte.toString(16).padStart(2,'0')).join('');
+  return 'assets/products/inbody-series/'+key+'.webp';
 }
 
-export async function stageInbodyImages(env,product,start=0,count=5,download=true){
-  if(!inbodyPhotoCount(product.maker,product.model))return [];
-  if(!env.MEDIA)throw failure('제품 사진 저장소 연결을 확인해 주세요.',503);
+export async function prepareInbodyProduct(product){
+  if(product.maker!=='인바디'||!Object.hasOwn(inbodyCatalog,product.model))return product;
   const entry=inbodyCatalog[product.model];
-  const saved=[];
-  const pending=entry.images.slice(start,start+count);
-  for(let index=0;index<pending.length;index+=5){
-    const images=await Promise.all(pending.slice(index,index+5).map(async ([address,label])=>{
-      try {
-        return {address,label,path:await saveOfficialImage(env.MEDIA,address,download)};
-      } catch(error){
-        throw failure(product.model+' '+label+' 사진 저장 실패 · '+(error.status?error.message:'원본 서버 접속 오류'),422);
-      }
-    }));
-    saved.push(...images);
-  }
-  return saved;
-}
-
-export async function prepareInbodyProduct(env,product){
-  const count=inbodyPhotoCount(product.maker,product.model);
-  if(!count)return product;
-  const entry=inbodyCatalog[product.model];
-  const saved=await stageInbodyImages(env,product,0,count,false);
+  const saved=await Promise.all(entry.images.map(async ([address,label])=>({address,label,path:await photoPath(address)})));
   const figure=pattern=>{
     const item=saved.find(x=>x.address.includes(pattern));
     return item?`<figure><img src="${item.path}" alt="${escapeHtml(product.model+' '+item.label)}" loading="lazy"><figcaption>${escapeHtml(item.label)}</figcaption></figure>`:'';
