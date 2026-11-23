@@ -97,7 +97,7 @@ export async function discoveryAction({request,env}) {
   const data=await bodyJson(request,3000);
   if(data.action==='scan'||data.action==='pilot') {
     if(!Object.hasOwn(sources,data.key)) throw failure('시범 공급업체를 확인해 주세요.');
-    const items=data.action==='pilot'?pilot[data.key]:await collect(data.key);
+    const items=data.action==='pilot'?pilot[data.key]:await collect(data.key,data.mirror===true);
     await stage(env,data.key,items,data.action==='pilot'?'2026-11-23':new Date().toISOString());
     return json({count:items.length});
   }

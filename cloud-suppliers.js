@@ -161,7 +161,7 @@ const discoverySuppliers={inbody:'인바디',alpinion:'알피니언메디칼시�
 let discoveryRows=null,discoveryBusy=false,discoveryMessage='';
 async function discoveryRequest(data) {
   const response=await fetch('/api/discovery',{cache:'no-store',...(data?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}:{})});
-  if(!response.headers.get('content-type')?.includes('application/json'))throw Error('장비 검토 API 배포 상태를 확인해 주세요.');
+  if(!response.headers.get('content-type')?.includes('application/json'))throw Error('수집 서버가 응답하지 않았습니다 (HTTP '+response.status+').');
   const result=await response.json();
   if(!response.ok)throw Error(result.error||'장비 검토 요청이 실패했습니다.');
   return result;
@@ -195,7 +195,15 @@ async function updateDiscovery(action,review) {
       await cloudLoadProducts();
     } else if(action!=='refresh') {
       for(const [key,name] of Object.entries(discoverySuppliers)) {
-        try { const result=await discoveryRequest({action,key});messages.push(name+' '+result.count+'건 확인'); }
+        try {
+          let result;
+          try { result=await discoveryRequest({action,key}); }
+          catch(error) {
+            if(action!=='scan'||key!=='alpinion')throw error;
+            result=await discoveryRequest({action,key,mirror:true});
+          }
+          messages.push(name+' '+result.count+'건 확인');
+        }
         catch(error){messages.push(name+' · '+error.message);}
       }
     }

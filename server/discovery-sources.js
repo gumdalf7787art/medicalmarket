@@ -2,7 +2,7 @@ import {failure} from './cloud.js';
 
 export const sources = {
   inbody: {maker:'인바디', url:'https://inbody.com/kr/ko/products/category/body-composition'},
-  alpinion: {maker:'알피니언메디칼시스템', url:'https://www.alpinion.com/kr/product/product_intro.do'},
+  alpinion: {maker:'알피니언메디칼시스템', url:'https://www.alpinion.com/kr/product/product_intro.do', mirror:'https://www.alpinion.co.kr/kr/product/product_list_ultra.do'},
   bistos0340: {maker:'비스토스', url:'https://www.bistos.co.kr/products/'}
 };
 
@@ -145,9 +145,10 @@ export function modelFromLink(key, url, label) {
     return title.match(/^(?:Model\s*:\s*|More Info\s+)(BT[- ]\d+[A-Z]*)$/i)?.[1];
 }
 
-export async function collect(key) {
-  const source = sources[key];
-  const response = await fetch(source.url,{redirect:'manual',signal:AbortSignal.timeout(18000)});
+export async function collect(key, mirror=false) {
+  const sourceUrl = mirror ? sources[key].mirror : sources[key].url;
+  if (!sourceUrl) throw failure('공식 목록 주소를 확인해 주세요.');
+  const response = await fetch(sourceUrl,{redirect:'manual',signal:AbortSignal.timeout(12000)});
   if (!response.ok) throw failure('공식 목록을 읽지 못했습니다. HTTP '+response.status,502);
   const found = new Map();
   let current;
@@ -155,8 +156,8 @@ export async function collect(key) {
     element(el) {
       current = null;
       let url;
-      try { url = new URL(el.getAttribute('href'),source.url); } catch { return; }
-      if (url.origin !== new URL(source.url).origin) return;
+      try { url = new URL(el.getAttribute('href'),sourceUrl); } catch { return; }
+      if (![new URL(sourceUrl).origin,new URL(sources[key].url).origin].includes(url.origin)) return;
       const anchor = {url,text:''};
       current = anchor;
       el.onEndTag(()=>{
