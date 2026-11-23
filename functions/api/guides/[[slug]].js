@@ -1,9 +1,11 @@
 import {json,bodyJson,equal,failure,requireAdmin,sameOrigin,safeHandler} from '../../../server/cloud.js';
 import {initialize,list,read,save} from '../../../server/guides.js';
+import {isApprovedGuideConnection} from '../../../server/guide-connections.js';
 async function authorize(request,env,write){
   const token=request.headers.get('Authorization');
   if(token){
-    if(!env.GUIDE_PUBLISH_TOKEN||!await equal(token,'Bearer '+env.GUIDE_PUBLISH_TOKEN))throw failure('발행 권한이 없습니다.',403);
+    if(env.GUIDE_PUBLISH_TOKEN&&await equal(token,'Bearer '+env.GUIDE_PUBLISH_TOKEN))return;
+    if(!await isApprovedGuideConnection(request,env.DB))throw failure('발행 권한이 없습니다.',403);
   }else{
     if(write)sameOrigin(request);
     await requireAdmin(request,env);
