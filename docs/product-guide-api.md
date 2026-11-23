@@ -1,5 +1,11 @@
 # 제품 안내 발행 API
 
+## 관리자 화면에서 발행 도구 연결
+
+운영 API에 접속할 수 있는 Windows 실행 환경에서 `scripts/guide-publish.ps1 -Action pair`를 실행한다. 도구가 만든 토큰은 같은 Windows 계정에서만 읽을 수 있도록 암호화해 저장한다. 서버에는 토큰 해시만 보내며, 도구가 출력한 연결 ID를 확인한다.
+
+메디컬마켓 운영 화면의 **제품 안내 관리 → 브라우저 없는 제품 안내 API 연결**에서 같은 ID를 입력하고 승인한다. 연결 요청은 30분 안에 승인한다. 승인 후 `scripts/guide-publish.ps1 -Action connection-status`의 `active`를 확인한다. 발행할 때는 `-UsePairedConnection`을 추가한다. 연결 목록에서 연결을 해제하면 해당 연결은 즉시 인증에 실패한다. 이 연결의 권한은 제품 안내 조회·초안 저장·공개에 한정된다.
+
 자동 작성 도구는 https://medicalmarket.co.kr 의 API에서 초안 저장과 공개 발행을 처리합니다. 자동 작성 도구는 Cloudflare Pages Production의 Secret GUIDE_PUBLISH_TOKEN에 설정한 길고 무작위인 전용 값을 서버 측 Authorization: Bearer 헤더로 전달합니다. Secret 설정 후 재배포합니다. 실행 환경에도 동일한 전용 토큰을 GUIDE_PUBLISH_TOKEN으로 안전하게 연결합니다. 운영자 비밀번호나 Gmail 자격 증명을 공유하지 않습니다.
 
 1. GET /api/cloud/products?page=1&q=검색어 로 공개 제품을 찾고 GET /api/cloud/products?id=제품번호 에서 image, gallery, guidePhotos.details를 확인합니다.
