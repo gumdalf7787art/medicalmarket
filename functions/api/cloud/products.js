@@ -1,4 +1,5 @@
 import {discoveryPhoto} from '../../../server/discovery-photo.js';
+import {j50Id,updateJ50} from '../../../server/inbody-j50.js';
 import {productSearchSql,productSearchOrderSql} from '../../../server/product-search.js';
 import sanitizeHtml from 'sanitize-html';
 import {productGuidePhotos} from '../../../server/guides.js';
@@ -26,7 +27,9 @@ export const onRequestGet=safeHandler(async({request,env})=>{
   const admin=new URL(request.url).searchParams.get('admin')==='1';if(admin)await requireAdmin(request,env);
   const params=new URL(request.url).searchParams;
   if(params.has('id')){
-    const row=await env.DB.prepare('SELECT payload,revision FROM mm_products WHERE id=? '+(admin?'':'AND published=1 AND deleted=0')).bind(params.get('id')).first();
+    const lookup=env.DB.prepare('SELECT payload,revision FROM mm_products WHERE id=? '+(admin?'':'AND published=1 AND deleted=0')).bind(params.get('id'));
+    let row=await lookup.first();
+    if(row&&params.get('id')===j50Id&&row.revision===1)row=await updateJ50(env.DB,row)||await lookup.first();
     if(!row)throw failure('제품을 찾을 수 없습니다.',404);
     const product=discoveryPhoto(JSON.parse(row.payload));
     return json({product:{...product,guidePhotos:productGuidePhotos(product),revision:row.revision}});
