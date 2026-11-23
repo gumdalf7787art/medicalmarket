@@ -19,7 +19,7 @@ assert.equal((await view()).status,404);
 assert.equal((await write(draft)).status,409);
 assert.equal((await write({...draft,revision:1,published:true})).status,200);
 const html=await (await view()).text();
-for(const value of ['BlogPosting','&lt;script&gt;','href="/#request/p1">견적 요청하기 →</a>','/assets/test.jpg','<h2>구성</h2>'])assert.ok(html.includes(value),value);
+for(const value of ['BlogPosting','&lt;script&gt;','<small>메디컬마켓</small>','href="/product.html?id=managed-p1">초음파 자세히 보러 가기 (견적 요청 가능)</a>','/assets/test.jpg','<h2>구성</h2>'])assert.ok(html.includes(value),value);
 assert.equal((await (await get(ctx('/api/guides?q=v7',[]))).json()).guides.length,1);
 assert.ok((await (await sitemap({env})).text()).includes('/guide/v7'));
 sqlite.exec('UPDATE mm_products SET deleted=1');
