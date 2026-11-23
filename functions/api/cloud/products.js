@@ -1,5 +1,6 @@
 import {productSearchSql,productSearchOrderSql} from '../../../server/product-search.js';
 import sanitizeHtml from 'sanitize-html';
+import {productGuidePhotos} from '../../../server/guides.js';
 import {json,bodyJson,sameOrigin,authenticated,requireAdmin,schema,safeHandler,failure} from '../../../server/cloud.js';
 const imageUrl=value=> typeof value==='string'&&value.length<=2048&&(/^(https:\/\/[^\s"<>]+|assets\/[\w./%-]+|\/media\/[\w.-]+)$/.test(value))&&!value.includes('..');
 export function cleanProduct(p){
@@ -26,7 +27,8 @@ export const onRequestGet=safeHandler(async({request,env})=>{
   if(params.has('id')){
     const row=await env.DB.prepare('SELECT payload,revision FROM mm_products WHERE id=? '+(admin?'':'AND published=1 AND deleted=0')).bind(params.get('id')).first();
     if(!row)throw failure('제품을 찾을 수 없습니다.',404);
-    return json({product:{...JSON.parse(row.payload),revision:row.revision}});
+    const product=JSON.parse(row.payload);
+    return json({product:{...product,guidePhotos:productGuidePhotos(product),revision:row.revision}});
   }
   const summary=p=>({id:p.id,name:p.name,model:p.model,maker:p.maker,categoryIds:p.categoryIds,image:p.image,imageFit:p.imageFit,published:p.published,deleted:p.deleted,updatedAt:p.updatedAt,_summary:true});
   if(params.has('page')){
