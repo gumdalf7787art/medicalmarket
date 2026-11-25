@@ -5,12 +5,15 @@ import {onRequestGet as show} from '../functions/guide/[[slug]].js';
 import {onRequestPut as put,onRequestGet as get} from '../functions/api/guides/[[slug]].js';
 import {onRequestGet as sitemap} from '../functions/sitemap.xml.js';
 import {requestConnection,connectionStatus,listConnections,manageConnection} from '../server/guide-connections.js';
+import {productConnections} from '../server/guide-connections.js';
+import {onRequestPost as saveProduct} from '../functions/api/cloud/products.js';
+import {onRequestPost as savePhoto} from '../functions/api/cloud/image.js';
 import {mac} from '../server/cloud.js';
 import {createHash} from 'node:crypto';
 const sqlite=new DatabaseSync(':memory:');
-const DB={prepare(sql){let args=[];return {bind(...values){args=values;return this;},first(){return sqlite.prepare(sql).get(...args);},all(){return {results:sqlite.prepare(sql).all(...args)};},run(){return {meta:sqlite.prepare(sql).run(...args)};}};}};
-sqlite.exec('CREATE TABLE mm_products(id TEXT,published INTEGER,deleted INTEGER,payload TEXT)');
-sqlite.prepare('INSERT INTO mm_products VALUES(?,1,0,?)').run('p1',JSON.stringify({name:'초음파',model:'V7',image:'assets/test.jpg',gallery:['assets/test.jpg','assets/side.jpg','assets/back.jpg','assets/extra.jpg'],descriptionHtml:'<p><img src="/media/detail.webp"></p>'}));
+const DB={async batch(statements){return statements.map(statement=>statement.run());},prepare(sql){let args=[];return {bind(...values){args=values;return this;},first(){return sqlite.prepare(sql).get(...args);},all(){return {results:sqlite.prepare(sql).all(...args)};},run(){return {meta:sqlite.prepare(sql).run(...args)};}};}};
+sqlite.exec('CREATE TABLE mm_products(id TEXT PRIMARY KEY,published INTEGER,deleted INTEGER,payload TEXT,revision INTEGER DEFAULT 1,updated_at TEXT)');
+sqlite.prepare('INSERT INTO mm_products(id,published,deleted,payload) VALUES(?,1,0,?)').run('p1',JSON.stringify({name:'초음파',model:'V7',image:'assets/test.jpg',gallery:['assets/test.jpg','assets/side.jpg','assets/back.jpg','assets/extra.jpg'],descriptionHtml:'<p><img src="/media/detail.webp"></p>'}));
 const env={DB,GUIDE_PUBLISH_TOKEN:'test-only',ADMIN_PASSWORD:'local-test-admin-password'};
 const draft={revision:0,published:false,productId:'p1',title:'초음파 안내',summary:'구성 안내',body:'소개 문단\n\n## 구성\n\n<script>test</script>\n\n사용 문단\n\n마무리 문단',images:['assets/test.jpg']};
 function ctx(path,slug,options){return {env,params:{slug},request:new Request('https://medicalmarket.co.kr'+path,options)};}
@@ -69,3 +72,39 @@ assert.equal((await (await get(ctx('/api/guides',[]))).json()).guides.length,0);
 assert.equal(guideProductLabel('legacy-1681439960','등록 상품명'),'병원용 혈압계 BPBIO320_내장');
 assert.equal(guideProductLabel('p1','초음파'),'초음파');
 console.log('Guide API, visibility, rendering, search and sitemap passed');
+
+const productToken='mm_product_'+'b'.repeat(64);
+const productHeaders={Authorization:'Bearer '+productToken};
+const productPayload={id:'new-product',name:'New product',model:'MM-1',maker:'Maker',categoryIds:['20'],gallery:[],image:'',descriptionHtml:'',published:true};
+const connectProduct=await productConnections.requestConnection(ctx('/api/product-connections/pair',[],{
+  method:'POST',body:JSON.stringify({token_hash:createHash('sha256').update(productToken).digest('hex'),client:'Product test'})
+}));
+assert.equal(connectProduct.status,201);
+const productConnectionId=(await connectProduct.json()).id;
+const manageProduct=(action,headers=admin)=>productConnections.manageConnection(ctx('/api/product-connections',[],{
+  method:'POST',headers,body:JSON.stringify({id:productConnectionId,action})
+}));
+const register=(payload,headers=productHeaders)=>saveProduct(ctx('/api/cloud/products',[],{
+  method:'POST',headers,body:JSON.stringify(payload)
+}));
+assert.equal((await register(productPayload)).status,403);
+assert.equal((await manageProduct('approve',{Origin:admin.Origin})).status,401);
+assert.equal((await manageProduct('approve')).status,200);
+assert.equal((await register(productPayload,localHeaders)).status,403);
+assert.equal((await write(draft,productToken)).status,403);
+assert.equal((await register({...productPayload,revision:1})).status,403);
+assert.equal((await register({...productPayload,deleted:true})).status,403);
+const photo=Buffer.from('RIFF0000WEBPtest-data');
+const objects=new Map();
+env.MEDIA={head:async key=>objects.get(key),put:async(key,value,metadata)=>objects.set(key,metadata)};
+const photoHash=createHash('sha256').update(photo).digest('hex');
+const upload=await savePhoto(ctx('/api/cloud/image',[],{method:'POST',body:photo,headers:{
+  ...productHeaders,'Content-Type':'image/webp','X-Image-SHA256':photoHash
+}}));
+assert.equal(upload.status,200);
+const {url}=await upload.json();
+assert.equal((await register({...productPayload,image:url,gallery:[url]})).status,200);
+assert.equal((await register(productPayload)).status,409);
+assert.equal((await manageProduct('revoke')).status,200);
+assert.equal((await register({...productPayload,id:'revoked-product'})).status,403);
+console.log('Product pairing, scope isolation, image upload, create-only access and revocation passed');

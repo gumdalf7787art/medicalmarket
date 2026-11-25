@@ -1,3 +1,4 @@
+import {productConnections} from '../../../server/guide-connections.js';
 import {discoveryPhoto} from '../../../server/discovery-photo.js';
 import {j50Id,updateJ50} from '../../../server/inbody-j50.js';
 import {productSearchSql,productSearchOrderSql} from '../../../server/product-search.js';
@@ -24,7 +25,7 @@ export function cleanProduct(p){
 }
 export const onRequestGet=safeHandler(async({request,env})=>{
   if(!env.DB)throw failure('DB 바인딩을 확인해 주세요.',503);
-  const admin=new URL(request.url).searchParams.get('admin')==='1';if(admin)await requireAdmin(request,env);
+  const admin=new URL(request.url).searchParams.get('admin')==='1';if(admin&&!await productConnections.approved(request,env.DB))await requireAdmin(request,env);
   const params=new URL(request.url).searchParams;
   if(params.has('id')){
     const lookup=env.DB.prepare('SELECT payload,revision FROM mm_products WHERE id=? '+(admin?'':'AND published=1 AND deleted=0')).bind(params.get('id'));
@@ -55,9 +56,13 @@ export const onRequestGet=safeHandler(async({request,env})=>{
   return json({products:rows.results.map(r=>params.get('summary')==='1'?summary(discoveryPhoto(JSON.parse(r.payload))):({...discoveryPhoto(JSON.parse(r.payload)),revision:r.revision})),next:rows.results.length===limit?rows.results.at(-1).id:null,initialized:true});
 });
 export const onRequestPost=safeHandler(async({request,env})=>{
-  sameOrigin(request);await requireAdmin(request,env);await schema(env);
+  const paired=await productConnections.approved(request,env.DB);
+  if(!paired){sameOrigin(request);await requireAdmin(request,env);}
+  await schema(env);
   const data=await bodyJson(request),row=cleanProduct(data);
-  const revision=data.revision??0;if(!Number.isSafeInteger(revision)||revision<0)throw failure('제품 버전을 확인해 주세요.');
+  const revision=data.revision??0;
+  if(paired&&(revision!==0||row.deleted))throw failure('제품 연결은 새 상품 등록에만 사용할 수 있습니다.',403);
+  if(!Number.isSafeInteger(revision)||revision<0)throw failure('제품 버전을 확인해 주세요.');
   const values=[JSON.stringify(row),Number(row.published),Number(row.deleted),row.updatedAt,row.id];
   const result=revision===0
     ?await env.DB.prepare('INSERT OR IGNORE INTO mm_products(payload,published,deleted,updated_at,id,revision) VALUES (?,?,?,?,?,1)').bind(...values).run()

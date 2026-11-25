@@ -8,8 +8,8 @@ async function api(url,options){
   if(!res.ok)throw Error(data.error||'요청을 처리하지 못했습니다.');
   return data;
 }
-const connectionsUrl='/api/guide-connections';
-function GuideConnections(){
+function GuideConnections({products=false}){
+  const connectionsUrl=products?'/api/product-connections':'/api/guide-connections';
   const [connections,setConnections]=useState([]),[id,setId]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false);
   async function load(){setConnections((await api(connectionsUrl)).connections);}
   async function run(action){
@@ -20,8 +20,8 @@ function GuideConnections(){
     await api(connectionsUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:connectionId,action})});
     setId('');await load();setMessage(action==='approve'?'발행 API 연결을 승인했습니다.':'발행 API 연결을 해제했습니다.');
   }
-  return <details><summary>브라우저 없는 제품 안내 API 연결</summary>
-    <p>발행 도구가 표시한 연결 ID를 대조하세요. 승인된 환경은 제품 안내 글을 조회하고 저장·공개할 수 있습니다.</p>
+  return <details><summary>{products?'제품 등록 API 연결':'브라우저 없는 제품 안내 API 연결'}</summary>
+    <p>발행 도구가 표시한 연결 ID를 대조하세요. {products?'승인된 환경은 제품 사진을 올리고 새 제품을 저장·공개할 수 있습니다.':'승인된 환경은 제품 안내 글을 조회하고 저장·공개할 수 있습니다.'}</p>
     <fieldset disabled={busy}><legend>연결 승인 및 해제</legend>
       <label>연결 ID<input value={id} onChange={e=>setId(e.target.value)} /></label>
       <button type="button" disabled={!id.trim()} onClick={()=>run(()=>change('approve',id.trim()))}>연결 ID 승인</button>
@@ -58,7 +58,7 @@ export default function GuideEditor(){
     patch({revision:g.revision,published});refresh(v=>v+1);tell(published?'발행했습니다.':'비공개로 저장했습니다.');
   });}
   const photos=product?.guidePhotos?product.guidePhotos.gallery:[...new Set([product?.image,...(product?.gallery||[])].filter(Boolean))];
-  return <section className="guide-editor"><h1>제품 안내 관리</h1><GuideConnections/><fieldset disabled={busy}><legend>작성한 글</legend>
+  return <section className="guide-editor"><h1>제품 안내 관리</h1><GuideConnections/><GuideConnections products/><fieldset disabled={busy}><legend>작성한 글</legend>
     {rows.map(r=><button key={r.slug} onClick={()=>edit(r.slug)}>{r.published?'공개':'비공개'} · {r.title}</button>)}
     {page>1&&<button onClick={()=>paging(page-1)}>이전</button>}{more&&<button onClick={()=>paging(page+1)}>다음</button>}
     <button onClick={()=>{set(empty);productSet(null);tell('');}}>새 글 작성</button></fieldset>

@@ -14,3 +14,16 @@
 제조사가 상세 정보를 JSON으로 제공하면 collect에 `--json-url 공식_API_URL --record data.products.0 --model-field model --text-field paragraphs --images-field images`를 붙인다. record와 필드명은 실제 응답 구조에 맞춰 지정한다. 모델명이 일치하는 레코드의 본문 문자열과 사진 URL 배열을 수집한다.
 
 여러 제품 작업은 `python scripts/product-pipeline.py session`을 한 번 시작해 관리자 세션을 재사용한다. 표준 입력에 한 줄씩 JSON 배열(예: `["scan","inbody"]`, `["list"]`)을 보내면 각 명령이 JSON 한 줄로 응답한다. 검토가 끝난 파일만 publish 명령으로 전달한다.
+
+
+## Windows MCP 제품 등록 전용 연결
+
+같은 Windows 계정에서 다음 명령을 실행하면 만료 시간과 승인용 ID가 표시됩니다.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\guide-publish.ps1 -Action pair -ConnectionScope product
+```
+
+메디컬마켓 운영 화면에서 **제품 안내 관리 → 제품 등록 API 연결**을 열고 표시된 ID를 입력해 승인합니다. 연결 요청은 30분 동안 유효하며 같은 메뉴에서 승인된 연결을 해제할 수 있습니다. MCP 호스트에서 `scripts/guide-publish-mcp.py`를 다시 로드하면 `product_status`, `upload_product_photo`, `save_product`가 표시됩니다.
+
+`product_status`로 연결 상태를 확인합니다. `upload_product_photo`에는 작업 폴더 내부의 WebP 파일 절대 경로를 전달합니다. 반환된 주소를 제품의 `image`와 `gallery`에 지정합니다. `save_product`의 `product` 필드는 기존 제품 등록 API 형식이며, `published`를 false로 보내면 비공개 초안, true로 보내면 공개 제품을 생성합니다. 이 연결은 신규 제품만 등록할 수 있습니다. 기존 제품 수정·삭제와 블로그 발행 권한은 별도입니다.

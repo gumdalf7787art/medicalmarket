@@ -8,14 +8,20 @@ param(
 
     [string]$InputPath,
 
-    [switch]$UsePairedConnection
+    [switch]$UsePairedConnection,
+
+    [ValidateSet('guide','product')]
+    [string]$ConnectionScope = 'guide'
 )
 
 $ErrorActionPreference = 'Stop'
 $origin = 'https://medicalmarket.co.kr'
 $api = "$origin/api/guides"
-$connect = "$origin/api/guide-connections"
-$pairedPath = Join-Path $env:LOCALAPPDATA 'MedicalMarket\guide-connection-token.dpapi'
+if ($ConnectionScope -eq 'product' -and $Action -notin 'pair','connection-status') {
+    throw 'Product connections use pair or connection-status with this script.'
+}
+$connect = "$origin/api/$ConnectionScope-connections"
+$pairedPath = Join-Path $env:LOCALAPPDATA "MedicalMarket\$ConnectionScope-connection-token.dpapi"
 function Read-LocalToken($path) {
     try {
         $secure = (Get-Content -LiteralPath $path -Raw).Trim() | ConvertTo-SecureString
@@ -30,17 +36,17 @@ if ($Action -in 'pair','connection-status' -or $UsePairedConnection) {
         $bytes = New-Object byte[] 32
         $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
         try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
-        $token = 'mm_guide_' + ([BitConverter]::ToString($bytes).Replace('-', '').ToLowerInvariant())
+        $token = ("mm_${ConnectionScope}_") + ([BitConverter]::ToString($bytes).Replace('-', '').ToLowerInvariant())
         [IO.Directory]::CreateDirectory((Split-Path -Parent $pairedPath)) | Out-Null
         $encrypted = ConvertTo-SecureString -AsPlainText -Force -String $token | ConvertFrom-SecureString
         New-Item -Path $pairedPath -ItemType File -Value $encrypted | Out-Null
     }
     $token = Read-LocalToken $pairedPath
-    if ($token -cnotmatch '^mm_guide_[0-9a-f]{64}$') { throw 'The paired publishing token is invalid.' }
+    if ($token -cnotmatch ("^mm_${ConnectionScope}_[0-9a-f]{64}$")) { throw 'The paired publishing token is invalid.' }
     if ($Action -eq 'pair') {
         $sha256 = [Security.Cryptography.SHA256]::Create()
         try { $hash = [BitConverter]::ToString($sha256.ComputeHash([Text.Encoding]::UTF8.GetBytes($token))).Replace('-', '').ToLowerInvariant() } finally { $sha256.Dispose() }
-        $payload = @{token_hash=$hash; client='메디컬마켓 Windows 발행 도구'} | ConvertTo-Json -Compress
+        $payload = @{token_hash=$hash; client="Medical Market Windows $ConnectionScope Publisher"} | ConvertTo-Json -Compress
         Invoke-RestMethod -Uri "$connect/pair" -Method Post -Body ([Text.Encoding]::UTF8.GetBytes($payload)) -ContentType 'application/json; charset=utf-8' -MaximumRedirection 0 -TimeoutSec 25
         return
     }
