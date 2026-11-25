@@ -1,2 +1,2 @@
 import {productConnections} from '../../../server/guide-connections.js';
-export const {requestConnection:onRequestPost}=productConnections;
+export const onRequestPost=productConnections.requestConnection;
