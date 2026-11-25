@@ -1,4 +1,4 @@
-import {initialize,list,read,origin} from '../../server/guides.js';
+import {initialize,list,read,origin,guidePageCount} from '../../server/guides.js';
 import {guideBodyBlocks} from '../../shared/guide-body-blocks.js';
 import {guideProductLabel} from '../../shared/guide-product-label.js';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -27,8 +27,9 @@ const indexStyle=`
 .guide-index .guide-copy p{margin:0;font-size:12px;line-height:1.5;color:#515154;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .guide-index .guide-more{display:flex;justify-content:space-between;align-items:center;margin-top:auto;padding-top:5px;color:#0066cc;font-size:12px;font-weight:600}
 .guide-index .guide-empty{margin:0;padding:20px;border-radius:14px;background:#fff;color:#515154}
-.guide-index .guide-pages{display:flex;gap:16px;margin-top:22px}
-.guide-index .guide-pages a{margin:0;color:#0066cc}
+.guide-index .guide-pages{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:4px;margin-top:24px}
+.guide-index .guide-pages a,.guide-index .guide-pages [aria-current]{display:inline-grid;place-items:center;min-width:40px;min-height:40px;margin:0;padding:0 6px;border-radius:6px;text-decoration:none}
+.guide-index .guide-pages a{color:#07589c}.guide-index .guide-pages a:hover{background:#edf4fa}.guide-index .guide-pages [aria-current]{background:#174f88;color:white;font-weight:700}
 @media(hover:hover){.guide-index .card:hover{transform:translateY(-2px);box-shadow:0 7px 20px #00000012}}
 @media(max-width:760px){.guide-index .cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:560px){.guide-index header,.guide-index main{padding-inline:16px}.guide-index main{padding-block:23px 36px}.guide-index .guide-heading{align-items:stretch;flex-direction:column;gap:12px;margin-bottom:16px}.guide-index input{width:auto;flex:1}.guide-index .cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.guide-index .guide-copy{padding:10px}.guide-index h2{font-size:14px}}
@@ -59,11 +60,22 @@ export async function onRequestGet({request,env,params}){
     }).join('');
     return page({title:g.title,summary:g.summary,url,image:images[0],data:{'@context':'https://schema.org','@type':'BlogPosting',headline:g.title,description:g.summary,datePublished:g.first_published,dateModified:g.updated,mainEntityOfPage:url,author:org,publisher:org,image:images,about:{'@type':'Product',name:g.name,model:g.model}},html:`<article><nav><a href="/guide">제품 안내 목록</a></nav><h1>${esc(g.title)}</h1><small>메디컬마켓 · <time datetime="${esc(g.updated)}">${esc(g.updated.slice(0,10))}</time></small><p>${esc(g.summary)}</p><p><strong>${esc(g.name)} ${esc(g.model)}</strong></p>${body}<div class="guide-product-link"><small>메디컬마켓</small><a class="cta" href="/product.html?id=${encodeURIComponent('managed-'+g.product_id)}">${esc(guideProductLabel(g.product_id,g.name))} 자세히 보러 가기 (견적 요청 가능)</a></div></article>`});
   }
-  const query=new URL(request.url).searchParams,q=(query.get('q')||'').trim().slice(0,100),n=Math.min(100000,Math.max(1,parseInt(query.get('page'))||1));
+  const query=new URL(request.url).searchParams,q=(query.get('q')||'').trim().slice(0,100);
+  const total=await guidePageCount(env.DB,q);
+  const n=Math.max(1,Math.min(total,parseInt(query.get('page'))||1));
   const rows=await list(env.DB,q,n),link=i=>base+'?'+new URLSearchParams({...q&&{q},page:String(i)});
   const cards=rows.slice(0,20).map(guideCard).join('');
+  const numbers=[];
+  for(let i=1;i<=total;i++){
+    if(total>7 && i!==1 && i!==total && Math.abs(i-n)>1){
+      if(numbers.at(-1)!=='…')numbers.push('…');
+    }else numbers.push(i);
+  }
   const pages=(n>1?'<a rel="prev" href="'+esc(link(n-1))+'">이전</a>':'')+
-    (rows.length>20?'<a rel="next" href="'+esc(link(n+1))+'">다음</a>':'');
+    numbers.map(i=>i==='…'?'<span aria-hidden="true">…</span>':i===n?
+      '<span aria-current="page" aria-label="'+i+'페이지">'+i+'</span>':
+      '<a aria-label="'+i+'페이지" href="'+esc(link(i))+'">'+i+'</a>').join('')+
+    (n<total?'<a rel="next" href="'+esc(link(n+1))+'">다음</a>':'');
   return page({title:'제품 안내',summary:'메디컬마켓에 등록된 의료장비의 제품 안내를 장비명과 모델명으로 찾아보세요.',url:n===1?base:link(n),noindex:!!q,index:true,html:`
     <div class="guide-heading"><h1>제품 안내</h1><form action="/guide" role="search"><input type="search" aria-label="장비명 또는 모델명" name="q" maxlength="100" placeholder="장비명 또는 모델명" value="${esc(q)}"><button>검색</button></form></div>
     ${cards?'<div class="cards">'+cards+'</div>':'<p class="guide-empty">'+(q?'검색 결과가 없습니다.':'등록된 제품 안내 글이 없습니다.')+'</p>'}

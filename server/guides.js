@@ -38,8 +38,13 @@ function guideWithPhotos(row){
 }
 
 const columns=`g.*,json_extract(p.payload,'$.name') name,json_extract(p.payload,'$.model') model,p.payload product_payload`;
+const matching=admin=>source+(admin?'':' AND g.published=1')+` AND instr(lower(g.title||' '||g.summary||' '||json_extract(p.payload,'$.name')||' '||coalesce(json_extract(p.payload,'$.model'),'')),lower(?))>0`;
+export async function guidePageCount(db,q=''){
+  const row=await db.prepare('SELECT COUNT(*) AS total'+matching(false)).bind(q).first();
+  return Math.ceil(row.total/20);
+}
 export async function list(db,q='',page=1,admin=false){
-  const condition=source+(admin?'':' AND g.published=1')+` AND instr(lower(g.title||' '||g.summary||' '||json_extract(p.payload,'$.name')||' '||coalesce(json_extract(p.payload,'$.model'),'')),lower(?))>0`;
+  const condition=matching(admin);
   return (await db.prepare('SELECT '+columns.replace('g.*','g.slug,g.title,g.summary,g.images,g.published,g.updated')+condition+' ORDER BY g.updated DESC,g.slug LIMIT 21 OFFSET ?').bind(q,(page-1)*20).all()).results.map(guideWithPhotos);
 }
 export async function read(db,slug,admin=false){
