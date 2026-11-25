@@ -18,7 +18,7 @@ assert.match(first,/aria-current="page" aria-label="1페이지"/);
 assert.match(first,/aria-label="3페이지"/);
 const second=await view('?page=2');
 assert.match(second,/aria-current="page" aria-label="2페이지"/);
-assert.match(second,/rel="prev"/);assert.match(second,/rel="next"/);
+assert.doesNotMatch(second,/aria-label="다음 10페이지"/);
 assert.equal((await view('?page=3')).match(/class="card"/g).length,5);
 assert.match(await view('?page=999'),/aria-current="page" aria-label="3페이지"/);
 const search=await view('?q=Model+A%26B&page=2');
@@ -32,3 +32,22 @@ sqlite.exec('UPDATE mm_products SET deleted=1');
 assert.doesNotMatch(await view(),/<nav class="guide-pages"/);
 console.log('Guide pagination: 45 posts, page bounds, encoded search, unpublished and deleted visibility passed');
 
+
+sqlite.exec('UPDATE mm_products SET deleted=0; UPDATE mm_guides SET published=1');
+for(let i=45;i<425;i++){
+ const id=String(i);
+ sqlite.prepare('INSERT INTO mm_guides VALUES(?,?,?,?,?,?,1,1,?,?,?)').run('extra-'+id,'00','제품 '+id,'요약','본문','[]','2026-01-01','2026-01-01','2026-01-01');
+}
+const numbers=html=>[...html.matchAll(/aria-label="(\d+)페이지"/g)].map(m=>Number(m[1]));
+assert.deepEqual(numbers(await view()),[1,2,3,4,5,6,7,8,9,10]);
+const tenth=await view('?page=10');
+assert.deepEqual(numbers(tenth),[1,2,3,4,5,6,7,8,9,10]);
+assert.match(tenth,/aria-label="다음 10페이지" href="[^" ]+page=11"/);
+const eleventh=await view('?q=Model+A%26B&page=11');
+assert.deepEqual(numbers(eleventh),[11,12,13,14,15,16,17,18,19,20]);
+assert.match(eleventh,/aria-label="이전 10페이지" href="[^" ]+q=Model\+A%26B&amp;page=10"/);
+assert.match(eleventh,/aria-label="다음 10페이지" href="[^" ]+page=21"/);
+const last=await view('?page=22');
+assert.deepEqual(numbers(last),[21,22]);
+assert.doesNotMatch(last,/aria-label="다음 10페이지"/);
+console.log('Ten-page groups, group navigation, search preservation and final partial group passed');

@@ -65,17 +65,14 @@ export async function onRequestGet({request,env,params}){
   const n=Math.max(1,Math.min(total,parseInt(query.get('page'))||1));
   const rows=await list(env.DB,q,n),link=i=>base+'?'+new URLSearchParams({...q&&{q},page:String(i)});
   const cards=rows.slice(0,20).map(guideCard).join('');
-  const numbers=[];
-  for(let i=1;i<=total;i++){
-    if(total>7 && i!==1 && i!==total && Math.abs(i-n)>1){
-      if(numbers.at(-1)!=='…')numbers.push('…');
-    }else numbers.push(i);
-  }
-  const pages=(n>1?'<a rel="prev" href="'+esc(link(n-1))+'">이전</a>':'')+
-    numbers.map(i=>i==='…'?'<span aria-hidden="true">…</span>':i===n?
+  const groupStart=Math.floor((n-1)/10)*10+1;
+  const groupEnd=Math.min(total,groupStart+9);
+  const numbers=Array.from({length:Math.max(0,groupEnd-groupStart+1)},(_,i)=>groupStart+i);
+  const pages=(groupStart>1?'<a aria-label="이전 10페이지" href="'+esc(link(groupStart-1))+'">이전</a>':'')+
+    numbers.map(i=>i===n?
       '<span aria-current="page" aria-label="'+i+'페이지">'+i+'</span>':
       '<a aria-label="'+i+'페이지" href="'+esc(link(i))+'">'+i+'</a>').join('')+
-    (n<total?'<a rel="next" href="'+esc(link(n+1))+'">다음</a>':'');
+    (groupEnd<total?'<a aria-label="다음 10페이지" href="'+esc(link(groupEnd+1))+'">다음</a>':'');
   return page({title:'제품 안내',summary:'메디컬마켓에 등록된 의료장비의 제품 안내를 장비명과 모델명으로 찾아보세요.',url:n===1?base:link(n),noindex:!!q,index:true,html:`
     <div class="guide-heading"><h1>제품 안내</h1><form action="/guide" role="search"><input type="search" aria-label="장비명 또는 모델명" name="q" maxlength="100" placeholder="장비명 또는 모델명" value="${esc(q)}"><button>검색</button></form></div>
     ${cards?'<div class="cards">'+cards+'</div>':'<p class="guide-empty">'+(q?'검색 결과가 없습니다.':'등록된 제품 안내 글이 없습니다.')+'</p>'}
