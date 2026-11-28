@@ -1,6 +1,6 @@
 let socialCompletionStarted=false,authMembersBootstrap=false;
 let authUser=null,authReady=false,authProviders={},authEmailReady=false,authNotice='',authBusy=false,authMembers=null,authMembersNext=null,authMemberOffset=0,authMemberQuery='',authBootstrap=false,authLegacyView=false,authLegacyTotal=0,authLegacyCredentials=0,authMemberTotal=0;
-async function authFetch(path,data){const response=await fetch('/api/auth/'+path,{credentials:'same-origin',cache:'no-store',...(data?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}:{})});const result=await response.json();if(!response.ok)throw Error(result.error||'로그인 처리에 실패했습니다.');return result;}
+async function authFetch(path,data){const response=await cloudFetch('/api/auth/'+path,{credentials:'same-origin',cache:'no-store',...(data?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}:{})});const result=await response.json();if(!response.ok)throw Error(result.error||'로그인 처리에 실패했습니다.');return result;}
 function authConsent(){return `<label class="auth-consent"><input type="checkbox" name="consent" required> <span>개인정보 수집·이용에 동의합니다. (필수)</span></label><details><summary>수집·이용 내용 보기</summary><p>회원 식별 및 서비스 이용을 위해 이름, 이메일, 로그인 제공자의 회원 식별값을 수집합니다. 이메일 가입 시 비밀번호는 복원이 불가능한 해시 형태로 저장합니다. 회원 탈퇴 시 삭제하며, 법령에 따라 보관해야 하는 자료는 해당 기간 동안 별도로 보관합니다.</p></details>`;}
 const GUIDE_QUOTE_LOGIN_KEY='mm-guide-quote-login';
 function guideQuoteAfterLogin(){

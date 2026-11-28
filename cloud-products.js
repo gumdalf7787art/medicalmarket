@@ -9,20 +9,36 @@ function cloudApplyRows(rows){
 function cloudCacheRows(rows){
   try{sessionStorage.setItem(CLOUD_CATALOG_CACHE,JSON.stringify({at:Date.now(),rows:rows.filter(p=>p.published&&!p.deleted)}));}catch{/* Storage disabled/full: the network path remains available. */}
 }
+// Retry transient read failures only; never repeat a save, login or upload.
+async function cloudFetch(url,options={}){
+  const attempts=(options.method||'GET').toUpperCase()==='GET'?3:1;
+  for(let attempt=0;attempt<attempts;attempt++){
+    let response;
+    try{response=await fetch(url,options);}
+    catch(error){
+      if(attempt===attempts-1||error.name==='AbortError')throw error;
+    }
+    if(response){
+      if(![502,503,504].includes(response.status)||attempt===attempts-1)return response;
+      try{await response.body?.cancel();}catch{/* Retrying must not depend on stream cleanup. */}
+    }
+    await new Promise(resolve=>setTimeout(resolve,500*(attempt+1)));
+  }
+}
 async function cloudRequest(path,options={}){
-  const response=await fetch('/api/cloud/'+path,{credentials:'same-origin',cache:'no-store',...options});
+  const response=await cloudFetch('/api/cloud/'+path,{credentials:'same-origin',cache:'no-store',...options});
   const type=response.headers.get('content-type')||'';
   if(!type.includes('application/json'))throw Error('클라우드 API 배포를 확인해 주세요.');
   const data=await response.json();if(!response.ok){if(response.status===401)cloudAuthenticated=false;throw Error(data.error||'서버 처리에 실패했습니다.');}return data;
 }
 async function cloudLoadProducts(){
-  const filesPromise=cloudRequest('attachments'+(cloudAuthenticated?'?admin=1':''));
+  const filesPromise=cloudRequest('attachments'+(cloudAuthenticated?'?admin=1':'')).then(value=>({value}),error=>({error}));
   const rows=[];let after='';
   do{const data=await cloudRequest('products?bulk=1&'+(cloudAuthenticated?'admin=1&':'summary=1&')+'after='+encodeURIComponent(after));rows.push(...data.products);after=data.next;}while(after);
-  const files=await filesPromise;
+  const fileResult=await filesPromise;if(fileResult.error)throw fileResult.error;const files=fileResult.value;
   for(const key of Object.keys(attachmentData))delete attachmentData[key];
   Object.assign(attachmentData,files.attachments||{});
-  cloudApplyRows(rows);cloudCacheRows(rows);
+  cloudApplyRows(rows);cloudCacheRows(rows);cloudError='';
 }
 function cloudLoginPanel(){return `<section class="admin-panel"><h2>제품 관리 로그인</h2><p>제품 정보와 사진을 저장하려면 운영자 로그인이 필요합니다.</p>${!cloudConfigured?'<p class="notice warn">Cloudflare → Settings → Variables and secrets에 ADMIN_PASSWORD를 Secret으로 추가하고 재배포하세요. 다른 계정과 겹치지 않는 12자 이상의 운영자 비밀번호를 사용하세요.</p>':''}<form id="cloud-login"><label>운영자 비밀번호<input name="password" type="password" autocomplete="current-password" required minlength="12"></label><button class="primary" ${cloudSaving?'disabled':''}>로그인</button></form>${cloudError?`<p role="alert">${e(cloudError)}</p>`:''}</section>`;}
 function cloudProductGate(){
